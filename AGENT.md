@@ -1,0 +1,13 @@
+- 使用 rsbuild 进行构建。
+- 使用 pnpm 作为包管理器。
+- 使用 react-router-dom 作为路由库。
+- 使用 @tanstack/react-query 进行查询优化操作
+- 使用 @tanstack/react-form 作为表单库
+- 使用 @tanstack/react-table 作为数据表格库
+- 使用 shadcn 作为组件库。
+- 使用 tailwindcss 作为样式库。
+- UI 风格使用微圆角
+- 品牌色使用 #507edbff
+- 基于 fetch 封装的 request 的请求添加统一的拦截器，在报错时使用通知组件显示错误。
+- 开发完成，需要用测试文件和agent browser skill操控浏览器进行测试，测试文件在.mock里。测试通过了在结束，测试遇到问题自主修复，三轮修复不好，就换个思路重新实现。
+- 每实现一个功能都写md文档记录下功能的实现过程和注意事项。

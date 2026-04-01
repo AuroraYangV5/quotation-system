@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>报价自动生成工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 拖拽高亮效果 */
+        .drag-over {
+            background-color: #e0f2fe !important;
+            border-color: #0ea5e9 !important;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-2xl">
+        <!-- 标题区域 -->
+        <div class="text-center mb-10">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">报价自动生成工具</h1>
+            <p class="text-gray-600">上传原价表，设置利润率，一键生成新报价</p>
+        </div>
+
+        <!-- 主卡片 -->
+        <div class="bg-white rounded-2xl shadow-xl p-8 mb-8">
+            <!-- 文件上传区域 -->
+            <div class="mb-8">
+                <label class="block text-lg font-semibold text-gray-700 mb-3">
+                    上传原价表 Excel 文件
+                </label>
+                <div id="dropZone"
+                     class="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer transition-all duration-200 hover:border-blue-400 hover:bg-blue-50">
+                    <input type="file" id="fileInput" accept=".xls,.xlsx" class="hidden">
+                    <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-16l-10-10v10m10-10l10 10"
+                              stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <p class="text-gray-600 mb-1" id="filePrompt">
+                        拖拽文件到此处，或<span class="text-blue-500 font-medium">点击选择文件</span>
+                    </p>
+                    <p class="text-sm text-gray-400">支持 .xls 或 .xlsx 格式</p>
+                    <p id="fileName" class="mt-3 text-blue-600 font-medium hidden"></p>
+                </div>
+            </div>
+
+            <!-- 利润率设置 -->
+            <div class="mb-8">
+                <div class="flex justify-between items-center mb-3">
+                    <label class="block text-lg font-semibold text-gray-700">
+                        设置利润率
+                    </label>
+                    <span class="text-2xl font-bold text-blue-600" id="profitValueDisplay">20%</span>
+                </div>
+                <input type="range" id="profitSlider" min="0" max="50" value="20" step="1"
+                       class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                <div class="flex justify-between text-sm text-gray-500 mt-1">
+                    <span>0%</span>
+                    <span>25%</span>
+                    <span>50%</span>
+                </div>
+            </div>
+
+            <!-- 生成按钮 -->
+            <button id="generateBtn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl">
+                <span id="generateBtnText">生成报价并下载</span>
+                <span id="generateBtnLoading" class="hidden">
+                    <svg class="inline animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-100" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 1 5.373 1 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    处理中...
+                </span>
+            </button>
+
+            <!-- 错误提示 -->
+            <div id="errorBox" class="mt-6 bg-red-50 border border-red-200 rounded-lg p-4 hidden">
+                <div class="flex">
+                    <svg class="h-5 w-5 text-red-400 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+                    </svg>
+                    <div>
+                        <p class="text-red-700 font-medium">错误</p>
+                        <p class="text-red-600 text-sm mt-1" id="errorMessage"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 提示说明 -->
+        <div class="bg-white/60 backdrop-blur rounded-xl p-6 text-sm text-gray-600">
+            <h3 class="font-semibold text-gray-700 mb-2">使用说明：</h3>
+            <ul class="list-disc list-inside space-y-1">
+                <li>上传包含商品原价的 Excel 文件（支持 .xls 和 .xlsx 格式）</li>
+                <li>拖动滑块设置想要的利润率（百分比）</li>
+                <li>点击生成按钮，系统会自动计算新价格并生成新报价表</li>
+                <li>生成完成后会自动下载新报价文件到你的电脑</li>
+                <li>支持单表格简单格式和多表格复杂格式的 Excel 文件</li>
+            </ul>
+        </div>
+
+        <!-- 页脚 -->
+        <div class="text-center mt-8 text-gray-500 text-sm">
+            <p>纯本地处理，无需登录，数据不会上传保存</p>
+        </div>
+    </div>
+
+    <script>
+        // DOM 元素
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+        const filePrompt = document.getElementById('filePrompt');
+        const profitSlider = document.getElementById('profitSlider');
+        const profitValueDisplay = document.getElementById('profitValueDisplay');
+        const generateBtn = document.getElementById('generateBtn');
+        const generateBtnText = document.getElementById('generateBtnText');
+        const generateBtnLoading = document.getElementById('generateBtnLoading');
+        const errorBox = document.getElementById('errorBox');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // 当前选中的文件
+        let selectedFile = null;
+
+        // 利润率滑块变化
+        profitSlider.addEventListener('input', () => {
+            profitValueDisplay.textContent = profitSlider.value + '%';
+        });
+
+        // 点击上传区域
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // 文件选择变化
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                selectFile(file);
+            }
+        });
+
+        // 拖拽事件
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                selectFile(file);
+            }
+        });
+
+        // 选中文件处理
+        function selectFile(file) {
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (ext !== 'xls' && ext !== 'xlsx') {
+                showError('只支持 .xls 或 .xlsx 格式的 Excel 文件');
+                return;
+            }
+            selectedFile = file;
+            fileName.textContent = '✅ ' + file.name;
+            fileName.classList.remove('hidden');
+            filePrompt.classList.add('hidden');
+            hideError();
+            updateGenerateButton();
+        }
+
+        // 更新按钮状态
+        function updateGenerateButton() {
+            generateBtn.disabled = !selectedFile;
+        }
+
+        // 显示错误
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorBox.classList.remove('hidden');
+        }
+
+        // 隐藏错误
+        function hideError() {
+            errorBox.classList.add('hidden');
+        }
+
+        // 生成报价
+        generateBtn.addEventListener('click', async () => {
+            if (!selectedFile) {
+                showError('请先上传文件');
+                return;
+            }
+
+            const profit = parseFloat(profitSlider.value);
+
+            // 设置加载状态
+            setLoading(true);
+            hideError();
+
+            try {
+                // 创建表单数据
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                formData.append('profit', profit);
+
+                // 发送请求
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '生成失败，请重试');
+                }
+
+                // 获取blob并触发下载
+                const blob = await response.blob();
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = '新报价表.xlsx';
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                    if (filenameMatch) {
+                        filename = filenameMatch[1];
+                    }
+                }
+
+                // 创建下载链接并触发点击
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        // 设置加载状态
+        function setLoading(loading) {
+            if (loading) {
+                generateBtn.disabled = true;
+                generateBtnText.classList.add('hidden');
+                generateBtnLoading.classList.remove('hidden');
+            } else {
+                generateBtnText.classList.remove('hidden');
+                generateBtnLoading.classList.add('hidden');
+                updateGenerateButton();
+            }
+        }
+    </script>
+</body>
+</html>
