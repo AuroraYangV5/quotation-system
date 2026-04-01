@@ -81,7 +81,7 @@ export default function UploadPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">报价自动生成工具</h1>
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">报价自动生成系统</h1>
           <p className="text-gray-600">上传原价表，自定义利润率，一键生成新报价</p>
         </div>
 
@@ -181,7 +181,6 @@ export default function UploadPage() {
               <li>设置默认利润率，解析后可单独调整每个商品的利润点</li>
               <li>支持批量选中修改多个商品的利润率</li>
               <li>预览确认无误后点击生成并下载</li>
-              <li>无需登录，纯工具使用</li>
             </ul>
           </CardContent>
         </Card>

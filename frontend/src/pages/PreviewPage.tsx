@@ -14,6 +14,7 @@ export default function PreviewPage() {
   const [tables, setTables] = useState<TableData[]>([]);
   const [globalProfit, setGlobalProfit] = useState(20);
   const [selectedSheet, setSelectedSheet] = useState<string | null>(null);
+  const [searchKeyword, setSearchKeyword] = useState('');
 
   useEffect(() => {
     const stored = sessionStorage.getItem("quotation-tables");
@@ -32,6 +33,17 @@ export default function PreviewPage() {
     if (!selectedSheet) return null;
     return tables.find((t) => t.sheetName === selectedSheet);
   }, [tables, selectedSheet]);
+
+  // 过滤搜索后的当前表格items
+  const filteredCurrentItems = useMemo(() => {
+    if (!currentTable) return [];
+    if (!searchKeyword.trim()) return currentTable.items;
+    const keyword = searchKeyword.toLowerCase();
+    return currentTable.items.filter(item =>
+      item.spec.toLowerCase().includes(keyword) ||
+      item.ruleName.toLowerCase().includes(keyword)
+    );
+  }, [currentTable, searchKeyword]);
 
   const allItems = useMemo(() => tables.flatMap((t) => t.items), [tables]);
 
@@ -137,8 +149,10 @@ export default function PreviewPage() {
   });
 
   function handleGenerate() {
+    // 如果有选中项，只导出选中项；否则导出全部
+    const itemsToExport = hasSelection ? selectedItems : allItems;
     const request = {
-      items: allItems.map((item) => ({
+      items: itemsToExport.map((item) => ({
         sheetName: item.sheetName,
         spec: item.spec,
         ruleName: item.ruleName,
@@ -348,6 +362,21 @@ export default function PreviewPage() {
               )}
             </CardHeader>
             <CardContent>
+              {/* 搜索框 */}
+              <div className="mb-4">
+                <Input
+                  type="text"
+                  placeholder="搜索规格或类型..."
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  className="w-full"
+                />
+                {searchKeyword && (
+                  <p className="text-sm text-gray-500 mt-2">
+                    找到 {filteredCurrentItems.length} 项匹配
+                  </p>
+                )}
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
@@ -373,7 +402,7 @@ export default function PreviewPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {currentTable.items.map((item, idx) => (
+                    {filteredCurrentItems.map((item, idx) => (
                       <tr
                         key={item.id}
                         className={idx % 2 === 1 ? "bg-gray-50" : ""}

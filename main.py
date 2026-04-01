@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-报价生成工具 Web后端
+报价生成系统 Web后端
 FastAPI应用入口
 """
 
@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
 
-app = FastAPI(title="报价自动生成工具")
+app = FastAPI(title="报价自动生成系统")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # 创建临时目录存储上传文件和生成文件
