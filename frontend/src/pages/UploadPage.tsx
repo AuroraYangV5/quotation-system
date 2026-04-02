@@ -20,11 +20,12 @@ export default function UploadPage() {
         // 初始化每个商品的利润率为默认值
         const tables: TableData[] = data.data.tables.map(table => ({
           ...table,
-          items: table.items.map((item: Omit<PriceItem, 'profitPercent' | 'calculatedPrice' | 'selected'>) => ({
+          items: table.items.map((item: Omit<PriceItem, 'profitPercent' | 'calculatedPrice' | 'selectedForBatch' | 'selectedForExport'>) => ({
             ...item,
             profitPercent: defaultProfit,
             calculatedPrice: item.originalPrice * (1 + defaultProfit / 100),
-            selected: false,
+            selectedForBatch: false,
+            selectedForExport: false,
           })),
         }));
         // 保存到sessionStorage，跳转到编辑页面
@@ -78,13 +79,14 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="text-center mb-8">
+    <div className="min-h-screen from-blue-50 to-indigo-100 min-w-[1024px]">
+      <div className="sticky top-0 z-50 bg-[#f5f7fa]/95 backdrop-blur-sm py-6 px-4">
+        <div className="max-w-6xl mx-auto text-center">
           <h1 className="text-4xl font-bold text-gray-800 mb-2">报价自动生成系统</h1>
           <p className="text-gray-600">上传原价表，自定义利润率，一键生成新报价</p>
         </div>
-
+      </div>
+      <div className="max-w-6xl mx-auto pb-8 px-4 pt-6">
         <Card>
           <CardHeader>
             <CardTitle>上传文件</CardTitle>
@@ -152,7 +154,7 @@ export default function UploadPage() {
 
             {/* 提交按钮 */}
             <Button
-              className="w-full text-[#fff]"
+              className="w-full bg-[#1a1a1a] text-white"
               size="lg"
               onClick={handleSubmit}
               disabled={!selectedFile || parseMutation.isPending}

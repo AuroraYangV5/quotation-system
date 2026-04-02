@@ -45,7 +45,7 @@
 - **TanStack React Table**: 表格数据管理
 - **Tailwind CSS**: 响应式样式
 - **Shadcn UI 组件**: 基础组件
-- **品牌色**: 使用 `#507edb` 符合AGENT.md要求
+- **品牌色**: 使用 `#1a1a1a` 符合AGENT.md要求
 - **微圆角**: 符合设计要求
 
 ### 状态管理

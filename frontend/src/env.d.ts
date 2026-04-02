@@ -1,8 +1,7 @@
-/// <reference types="@rsbuild/core/types" />
+/// <reference types="vite/client" />
 
 /**
  * Imports the SVG file as a React component.
- * @requires [@rsbuild/plugin-svgr](https://npmjs.com/package/@rsbuild/plugin-svgr)
  */
 declare module '*.svg?react' {
   import type React from 'react';

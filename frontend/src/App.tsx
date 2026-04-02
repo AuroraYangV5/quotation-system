@@ -1,7 +1,8 @@
-import { Routes, Route } from 'react-router-dom';
-import UploadPage from './pages/UploadPage';
-import PreviewPage from './pages/PreviewPage';
-import './index.css';
+import { Routes, Route } from "react-router-dom";
+import UploadPage from "./pages/UploadPage";
+import PreviewPage from "./pages/PreviewPage";
+import "./App.css";
+import "./index.css";
 
 const App = () => {
   return (

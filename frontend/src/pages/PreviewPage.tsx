@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,14 +7,15 @@ import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { generateQuotation } from "@/api";
-import type { TableData, PriceItem } from "@/types";
+import type { TableData } from "@/types";
 
 export default function PreviewPage() {
   const navigate = useNavigate();
   const [tables, setTables] = useState<TableData[]>([]);
   const [globalProfit, setGlobalProfit] = useState(20);
   const [selectedSheet, setSelectedSheet] = useState<string | null>(null);
-  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [batchProfitInput, setBatchProfitInput] = useState<string>("");
 
   useEffect(() => {
     const stored = sessionStorage.getItem("quotation-tables");
@@ -39,36 +40,64 @@ export default function PreviewPage() {
     if (!currentTable) return [];
     if (!searchKeyword.trim()) return currentTable.items;
     const keyword = searchKeyword.toLowerCase();
-    return currentTable.items.filter(item =>
-      item.spec.toLowerCase().includes(keyword) ||
-      item.ruleName.toLowerCase().includes(keyword)
+    return currentTable.items.filter(
+      (item) =>
+        item.spec.toLowerCase().includes(keyword) ||
+        item.ruleName.toLowerCase().includes(keyword),
     );
   }, [currentTable, searchKeyword]);
 
   const allItems = useMemo(() => tables.flatMap((t) => t.items), [tables]);
 
-  const selectedItems = useMemo(
-    () => allItems.filter((item) => item.selected),
+  // 批量设置选中项
+  const batchSelectedItems = useMemo(
+    () => allItems.filter((item) => item.selectedForBatch),
     [allItems],
   );
+  const hasBatchSelection = batchSelectedItems.length > 0;
 
-  const hasSelection = selectedItems.length > 0;
+  // 导出选中项
+  const exportSelectedItems = useMemo(
+    () => allItems.filter((item) => item.selectedForExport),
+    [allItems],
+  );
+  const hasExportSelection = exportSelectedItems.length > 0;
 
-  function toggleSelection(itemId: string) {
+  // 切换批量设置选中
+  function toggleBatchSelection(itemId: string) {
     setTables((prev) =>
       prev.map((table) => ({
         ...table,
         items: table.items.map((item) =>
-          item.id === itemId ? { ...item, selected: !item.selected } : item,
+          item.id === itemId
+            ? { ...item, selectedForBatch: !item.selectedForBatch }
+            : item,
         ),
       })),
     );
   }
 
-  function toggleSelectAllCurrentTable() {
+  // 切换导出选中
+  function toggleExportSelection(itemId: string) {
+    setTables((prev) =>
+      prev.map((table) => ({
+        ...table,
+        items: table.items.map((item) =>
+          item.id === itemId
+            ? { ...item, selectedForExport: !item.selectedForExport }
+            : item,
+        ),
+      })),
+    );
+  }
+
+  // 当前Sheet全选/取消全选 - 批量设置
+  function toggleSelectAllBatchCurrentTable() {
     if (!currentTable) return;
 
-    const allSelected = currentTable.items.every((item) => item.selected);
+    const allSelected = currentTable.items.every(
+      (item) => item.selectedForBatch,
+    );
     setTables((prev) =>
       prev.map((table) => {
         if (table.sheetName !== selectedSheet) return table;
@@ -76,7 +105,28 @@ export default function PreviewPage() {
           ...table,
           items: table.items.map((item) => ({
             ...item,
-            selected: !allSelected,
+            selectedForBatch: !allSelected,
+          })),
+        };
+      }),
+    );
+  }
+
+  // 当前Sheet全选/取消全选 - 导出
+  function toggleSelectAllExportCurrentTable() {
+    if (!currentTable) return;
+
+    const allSelected = currentTable.items.every(
+      (item) => item.selectedForExport,
+    );
+    setTables((prev) =>
+      prev.map((table) => {
+        if (table.sheetName !== selectedSheet) return table;
+        return {
+          ...table,
+          items: table.items.map((item) => ({
+            ...item,
+            selectedForExport: !allSelected,
           })),
         };
       }),
@@ -105,7 +155,7 @@ export default function PreviewPage() {
       prev.map((table) => ({
         ...table,
         items: table.items.map((item) =>
-          item.selected
+          item.selectedForBatch
             ? {
                 ...item,
                 profitPercent: profit,
@@ -150,7 +200,7 @@ export default function PreviewPage() {
 
   function handleGenerate() {
     // 如果有选中项，只导出选中项；否则导出全部
-    const itemsToExport = hasSelection ? selectedItems : allItems;
+    const itemsToExport = hasExportSelection ? exportSelectedItems : allItems;
     const request = {
       items: itemsToExport.map((item) => ({
         sheetName: item.sheetName,
@@ -175,89 +225,82 @@ export default function PreviewPage() {
   const sheetNames = tables.map((t) => t.sheetName);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-6 px-4">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800 mb-4">
-              预览与编辑
-            </h1>
-            <p className="text-gray-600">
-              共 {tables.length} 个表格，{allItems.length} 个商品规格
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={handleBack}
-              className="text-[#333]"
-            >
-              返回上传
-            </Button>
-            <Button
-              onClick={handleGenerate}
-              disabled={generateMutation.isPending}
-              className="bg-[#507edb] text-[#fff]"
-            >
-              {generateMutation.isPending ? (
-                <>
-                  <svg
-                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-100"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 1 5.373 1 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  生成中...
-                </>
-              ) : (
-                "生成并下载"
-              )}
-            </Button>
-          </div>
+    <div className="min-h-screen min-w-[1024px]">
+      <div className="sticky top-0 z-50 mx-auto relative max-w-6xl text-center bg-[#f5f7fa] py-6 px-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800 mb-4">预览与编辑</h1>
+          <p className="text-gray-600">
+            共 {tables.length} 个表格，{allItems.length} 个商品规格
+            {hasExportSelection &&
+              `，已选择 ${exportSelectedItems.length} 项导出`}
+          </p>
         </div>
-
+        <div className="absolute top-4 right-5 flex gap-3 mt-4">
+          <Button variant="outline" onClick={handleBack} className="bg-[#fff]">
+            返回上传
+          </Button>
+          <Button
+            onClick={handleGenerate}
+            disabled={generateMutation.isPending}
+            className="bg-[#1a1a1a] text-[#fff]"
+          >
+            {generateMutation.isPending ? (
+              <>
+                <svg
+                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-100"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 1 5.373 1 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                生成中...
+              </>
+            ) : (
+              "生成并下载"
+            )}
+          </Button>
+        </div>
+      </div>
+      <div className="max-w-6xl mx-auto pb-6 px-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <Card>
             <CardHeader>
-              <CardTitle>全局设置</CardTitle>
+              <div className="flex justify-between items-center">
+                <CardTitle>全局设置</CardTitle>
+                <label className="text-sm font-medium">
+                  利润率: {globalProfit}%
+                </label>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="text-sm font-medium">
-                      利润率: {globalProfit}%
-                    </label>
-                  </div>
                   <Slider
                     min={0}
                     max={100}
                     step={1}
-                    value={[globalProfit]}
-                    className="bg-[#397bff55]"
-                    onChange={(e) =>
-                      setGlobalProfitAll(
-                        Number((e.target as HTMLInputElement).value),
-                      )
-                    }
+                    value={String(globalProfit)}
+                    className="bg-[#1a1a1a]"
+                    onChange={(e) => setGlobalProfitAll(Number(e.target.value))}
                   />
                   <div className="flex justify-between text-xs text-gray-500 mt-1">
                     <span>0%</span>
+                    <span>25%</span>
                     <span>50%</span>
+                    <span>75%</span>
                     <span>100%</span>
                   </div>
                 </div>
@@ -271,38 +314,60 @@ export default function PreviewPage() {
           <Card>
             <CardHeader>
               <CardTitle>
-                批量设置
-                {hasSelection && (
-                  <span className="ml-2 text-sm font-normal text-gray-500">
-                    (已选 {selectedItems.length} 项)
+                批量设置利润率
+                {hasBatchSelection && (
+                  <span className="ml-2 text-sm font-normal text-gray-500 leading-none">
+                    （已选 {batchSelectedItems.length} 项）
                   </span>
                 )}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex justify-between items-center mb-2">
-                  <label className="text-sm font-medium h-[20px]"></label>
-                </div>
                 <div className="flex gap-3 items-center">
                   <Input
                     type="number"
                     min="0"
                     max="100"
                     placeholder="利润率"
-                    disabled={!hasSelection}
-                    onChange={(e) => batchUpdateProfit(Number(e.target.value))}
+                    disabled={!hasBatchSelection}
+                    value={batchProfitInput}
+                    onChange={(e) => setBatchProfitInput(e.target.value)}
                   />
                   <span className="text-gray-500">%</span>
+                  <Button
+                    className="bg-[#1a1a1a] text-white"
+                    disabled={!hasBatchSelection || !batchProfitInput}
+                    onClick={() => {
+                      const profit = Number(batchProfitInput);
+                      if (!isNaN(profit) && profit >= 0 && profit <= 100) {
+                        batchUpdateProfit(profit);
+                        // 应用后清空勾选状态
+                        setTables((prev) =>
+                          prev.map((table) => ({
+                            ...table,
+                            items: table.items.map((item) => ({
+                              ...item,
+                              selectedForBatch: false,
+                            })),
+                          })),
+                        );
+                        setBatchProfitInput("");
+                      }
+                    }}
+                  >
+                    应用
+                  </Button>
                 </div>
-                {!hasSelection && (
+
+                {!hasBatchSelection && (
                   <p className="text-sm text-amber-600">
-                    请先在下方表格勾选需要批量修改的商品
+                    请先在下方表格【批量】列勾选需要批量修改的商品
                   </p>
                 )}
-                {hasSelection && (
-                  <p className="text-sm text-green-600">
-                    输入利润率后自动应用到所有选中商品
+                {hasBatchSelection && (
+                  <p className="text-sm text-gray-500">
+                    输入利润率后点击确认按钮，应用后自动清空勾选
                   </p>
                 )}
               </div>
@@ -310,51 +375,38 @@ export default function PreviewPage() {
           </Card>
         </div>
 
-        {sheetNames.length > 1 && (
-          <Card className="mb-6">
-            <CardContent className="p-4">
-              <div className="flex flex-wrap gap-2">
-                {sheetNames.map((name) => (
-                  <Button
-                    key={name}
-                    variant={name === selectedSheet ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedSheet(name)}
-                    className={
-                      name === selectedSheet
-                        ? "bg-[#507edb] text-[#fff]"
-                        : "text-[#333]"
-                    }
-                  >
-                    {name}
-                  </Button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {currentTable && (
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">
-                <CardTitle>{currentTable.sheetName}</CardTitle>
+                {sheetNames.length > 1 && (
+                  <div className="flex flex-wrap gap-2">
+                    {sheetNames.map((name) => (
+                      <Button
+                        key={name}
+                        variant={name === selectedSheet ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSelectedSheet(name)}
+                        className={
+                          name === selectedSheet
+                            ? "bg-[#1a1a1a] text-[#fff] border-[#1a1a1a] h-[40px] px-4"
+                            : "text-[#1a1a1a] bg-[#fff] border-[#1a1a1a] h-[40px] px-4"
+                        }
+                      >
+                        {name}
+                      </Button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-500">
-                    {currentTable.items.length} 项
+                    共 {currentTable.items.length} 项
+                    {hasExportSelection &&
+                      `, 已选导出 ${exportSelectedItems.length} 项`}
                   </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={toggleSelectAllCurrentTable}
-                    className="text-[#333]"
-                  >
-                    {currentTable.items.every((i) => i.selected)
-                      ? "取消全选"
-                      : "全选"}
-                  </Button>
                 </div>
               </div>
+
               {currentTable.tableTitle && (
                 <p className="text-sm text-gray-500 mt-1">
                   {currentTable.tableTitle}
@@ -362,28 +414,48 @@ export default function PreviewPage() {
               )}
             </CardHeader>
             <CardContent>
-              {/* 搜索框 */}
-              <div className="mb-4">
-                <Input
-                  type="text"
-                  placeholder="搜索规格或类型..."
-                  value={searchKeyword}
-                  onChange={(e) => setSearchKeyword(e.target.value)}
-                  className="w-full"
-                />
-                {searchKeyword && (
-                  <p className="text-sm text-gray-500 mt-2">
-                    找到 {filteredCurrentItems.length} 项匹配
-                  </p>
-                )}
+              <div className="flex items-center gap-3 mb-4">
+                {/* 搜索框 */}
+                <div className="w-full">
+                  <Input
+                    type="text"
+                    placeholder="搜索规格或类型..."
+                    value={searchKeyword}
+                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    className="w-full border-[#1a1a1a]"
+                  />
+                  {searchKeyword && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      找到 {filteredCurrentItems.length} 项匹配
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleSelectAllBatchCurrentTable}
+                  className="text-[#1a1a1a] bg-[#fff] border-[#1a1a1a] h-[40px]"
+                >
+                  {currentTable.items.every((i) => i.selectedForBatch)
+                    ? "取消全选利润设置"
+                    : "全选利润设置"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleSelectAllExportCurrentTable}
+                  className="text-[#1a1a1a] bg-[#fff] border-[#1a1a1a] h-[40px]"
+                >
+                  {currentTable.items.every((i) => i.selectedForExport)
+                    ? "取消全选导出"
+                    : "全选导出"}
+                </Button>
               </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-gray-100">
-                      <th className="p-2 text-left border border-gray-200 text-sm">
-                        <span className="sr-only">选择</span>
-                      </th>
                       <th className="p-2 text-left border border-gray-200 text-sm">
                         规格
                       </th>
@@ -399,6 +471,12 @@ export default function PreviewPage() {
                       <th className="p-2 text-right border border-gray-200 text-sm">
                         计算后价格
                       </th>
+                      <th className="p-2 text-center border border-gray-200 text-sm w-26">
+                        选择设置利润
+                      </th>
+                      <th className="p-2 text-center border border-gray-200 text-sm w-26">
+                        选择导出
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -407,12 +485,6 @@ export default function PreviewPage() {
                         key={item.id}
                         className={idx % 2 === 1 ? "bg-gray-50" : ""}
                       >
-                        <td className="p-2 border border-gray-200 text-center">
-                          <Checkbox
-                            checked={item.selected}
-                            onChange={() => toggleSelection(item.id)}
-                          />
-                        </td>
                         <td className="p-2 border border-gray-200 text-sm">
                           {item.spec}
                         </td>
@@ -439,6 +511,18 @@ export default function PreviewPage() {
                         </td>
                         <td className="p-2 border border-gray-200 text-sm text-right font-medium">
                           {item.calculatedPrice.toFixed(1)}
+                        </td>
+                        <td className="p-2 border border-gray-200 text-center">
+                          <Checkbox
+                            checked={item.selectedForBatch}
+                            onChange={() => toggleBatchSelection(item.id)}
+                          />
+                        </td>
+                        <td className="p-2 border border-gray-200 text-center">
+                          <Checkbox
+                            checked={item.selectedForExport}
+                            onChange={() => toggleExportSelection(item.id)}
+                          />
                         </td>
                       </tr>
                     ))}

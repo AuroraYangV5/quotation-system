@@ -8,7 +8,8 @@ export interface PriceItem {
   originalPrice: number;
   profitPercent: number;
   calculatedPrice: number;
-  selected: boolean;
+  selectedForBatch: boolean;  // 选中用于批量设置利润率
+  selectedForExport: boolean; // 选中用于导出
 }
 
 // 表格数据
