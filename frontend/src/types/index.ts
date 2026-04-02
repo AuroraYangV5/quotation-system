@@ -35,6 +35,7 @@ export interface ParseResponse {
 // 生成请求
 export interface GenerateRequest {
   items: {
+    sheetName: string;
     spec: string;
     ruleName: string;
     originalPrice: number;
