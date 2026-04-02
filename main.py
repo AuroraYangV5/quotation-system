@@ -285,6 +285,34 @@ async def parse_excel(file: UploadFile = File(...)):
         return ParseResponse(success=False, message=f"解析失败: {str(e)}", data=None)
 
 
+@app.post("/api/ocr-parse")
+async def ocr_parse(file: UploadFile = File(...)):
+    """
+    图片OCR识别，从图片中提取规格和价格
+    使用GLM-4V-Flash视觉API识别，返回格式与 /api/parse 完全相同
+    """
+    try:
+        # 保存临时文件
+        file_id = str(uuid.uuid4())[:8]
+        temp_path = os.path.join(TEMP_DIR, f"ocr_{file_id}_{file.filename}")
+
+        with open(temp_path, "wb") as buffer:
+            buffer.write(await file.read())
+
+        # 调用GLM-4V-Flash解析
+        from parse_image_glm import parse_image
+        result = parse_image(temp_path)
+
+        # 删除临时文件
+        os.remove(temp_path)
+
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return ParseResponse(success=False, message=f"OCR识别失败: {str(e)}", data=None)
+
+
 @app.post("/api/generate")
 async def generate_excel(request: GenerateRequest):
     """
