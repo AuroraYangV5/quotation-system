@@ -6,9 +6,13 @@ FastAPI应用入口
 """
 
 import os
+import json
+import urllib
+import base64
 import tempfile
 import uuid
 import xlrd
+import requests
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
@@ -25,6 +29,9 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 TEMP_DIR = tempfile.gettempdir()
 os.makedirs(TEMP_DIR, exist_ok=True)
 
+# GLM API地址
+GLM_API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+
 
 # Pydantic模型
 class GeneratedItem(BaseModel):
@@ -34,6 +41,8 @@ class GeneratedItem(BaseModel):
     originalPrice: float
     profitPercent: float
 
+    model_config = {"extra": "allow"}  # 允许额外的动态字段
+
 
 class SheetInfo(BaseModel):
     sheetName: str
@@ -42,8 +51,10 @@ class SheetInfo(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    items: List[GeneratedItem]
+    items: List[dict]  # 支持动态自定义字段
     sheetInfos: List[SheetInfo]
+
+    model_config = {"extra": "allow"}
 
 
 # 解析结果模型
@@ -81,7 +92,7 @@ async def parse_excel(file: UploadFile = File(...)):
 
     ext = os.path.splitext(filename)[1].lower()
     if ext not in ['.xls', '.xlsx']:
-        return ParseResponse(success=False, message="只支持.xls或.xlsx格式的Excel文件", data=None)
+        return ParseResponse(success=False, message="只支持 .xls .xlsx 格式的Excel文件", data=None)
 
     try:
         # 生成唯一ID避免文件冲突
@@ -313,10 +324,508 @@ async def ocr_parse(file: UploadFile = File(...)):
         return ParseResponse(success=False, message=f"OCR识别失败: {str(e)}", data=None)
 
 
+@app.post("/api/parse-by-glm-preview")
+async def convert_excel_to_preview(file: UploadFile = File(...)):
+    """
+    将Excel转换为图片预览（供用户检查转换效果）
+    返回转换后的图片URL列表
+    """
+    filename = file.filename
+    if not filename:
+        return {"success": False, "message": "未上传文件", "data": None}
+
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ['.xls', '.xlsx', '.pdf']:
+        return {"success": False, "message": "只支持 .xls .xlsx .pdf 格式", "data": None}
+
+    try:
+        # 生成唯一ID避免文件冲突
+        file_id = str(uuid.uuid4())[:8]
+
+        # 保存上传的Excel文件
+        input_path = os.path.join(TEMP_DIR, f"glm_input_{file_id}{ext}")
+        with open(input_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        # 1. 将Excel/PDF转换为图片
+        from excel_to_image import ExcelToImageConverter, get_excel_reader
+        image_paths = []
+        page_names = []
+
+        if ext == '.pdf':
+            # PDF转换：每一页一张图片
+            from pdf2image import convert_from_path
+            pages = convert_from_path(input_path, dpi=150)
+            for idx, page in enumerate(pages):
+                page_name = f"第{idx+1}页"
+                img_filename = f"glm_preview_{file_id}_{idx}_page{idx+1}.png"
+                img_path = os.path.join(TEMP_DIR, img_filename)
+                page.save(img_path, 'PNG')
+                image_paths.append(f"/api/glm-preview/{img_filename}")
+                page_names.append(page_name)
+        else:
+            # Excel转换
+            converter = ExcelToImageConverter()
+            sheet_names_raw, _ = get_excel_reader(input_path)
+            for idx, sheet_name in enumerate(sheet_names_raw):
+                converter = ExcelToImageConverter()
+                img = converter.convert_sheet(input_path, idx)
+                img_filename = f"glm_preview_{file_id}_{idx}_{sheet_name}.png"
+                img_filename = img_filename.replace('/', '_').replace('\\', '_')
+                img_path = os.path.join(TEMP_DIR, img_filename)
+                img.save(img_path, 'PNG')
+                image_paths.append(f"/api/glm-preview/{img_filename}")
+                page_names.append(sheet_name)
+
+        os.remove(input_path)
+
+        return {
+            "success": True,
+            "message": f"转换成功，共 {len(image_paths)} 页/Sheet",
+            "data": {
+                "file_id": file_id,
+                "images": [
+                    {"url": url, "sheet_name": name}
+                    for url, name in zip(image_paths, page_names)
+                ]
+            }
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "message": f"转换失败: {str(e)}", "data": None}
+
+
+@app.get("/api/glm-preview/{filename}")
+async def get_glm_preview(filename: str):
+    """获取转换后的预览图片"""
+    file_path = os.path.join(TEMP_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="图片不存在")
+    return FileResponse(file_path, media_type="image/png")
+
+
+from fastapi import Query
+
+@app.post("/api/parse-by-glm")
+async def parse_excel_by_glm(
+    file: UploadFile = File(...),
+    selected_sheets: str = Query(None, description="选中的Sheet索引，逗号分隔"),
+    fields: str = Query(None, description="自定义提取字段，JSON格式")
+):
+    """
+    使用GLM-4V-Flash解析Excel文件
+    流程：Excel -> 转换为图片（每个Sheet一张）-> 一次性把所有图片传给GLM -> 返回完整JSON
+    保留原有 /api/parse 作为备用方案
+    支持selected_sheets参数，只解析选中的Sheet索引
+    """
+    filename = file.filename
+    if not filename:
+        return ParseResponse(success=False, message="未上传文件", data=None)
+
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ['.xls', '.xlsx', '.pdf']:
+        return ParseResponse(success=False, message="只支持 .xls .xlsx .pdf 格式", data=None)
+
+    # 解析选中的Sheet/Page索引
+    selected_indices = None
+    if selected_sheets:
+        try:
+            selected_indices = set(int(i) for i in selected_sheets.split(','))
+        except:
+            pass
+
+    # 解析自定义提取字段
+    import json
+    configurable_fields = None
+    if fields:
+        try:
+            configurable_fields = json.loads(urllib.parse.unquote(fields))
+        except:
+            pass
+
+    try:
+        # 生成唯一ID避免文件冲突
+        file_id = str(uuid.uuid4())[:8]
+        api_key = os.getenv("ZHIPU_API_KEY")
+        if not api_key:
+            # 如果环境变量未设置，尝试从硬编码读取（仅供开发）
+            api_key = '5b34e11121f5438d9284f04d8a69ae08.3ZFZSFLtScezhqUB'
+        if not api_key:
+            return {
+                'success': False,
+                'message': '未配置 ZHIPU_API_KEY 环境变量，请先设置智谱AI API Key',
+                'data': None
+            }
+
+        # 保存上传的文件
+        input_path = os.path.join(TEMP_DIR, f"glm_input_{file_id}{ext}")
+        with open(input_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        # 1. 将选中的页面转换为图片，并编码为base64
+        encoded_images = []
+        temp_image_paths = []
+
+        if ext == '.pdf':
+            # PDF转换：每一页一张图片
+            from pdf2image import convert_from_path
+            pages = convert_from_path(input_path, dpi=150)
+            for idx, page in enumerate(pages):
+                # 如果指定了选中的页码，只处理选中的
+                if selected_indices is not None and idx not in selected_indices:
+                    continue
+                page_name = f"第{idx+1}页"
+                # 保存到临时文件
+                img_filename = f"glm_tmp_{file_id}_{idx}.png"
+                img_path = os.path.join(TEMP_DIR, img_filename)
+                page.save(img_path, 'PNG')
+                temp_image_paths.append(img_path)
+                # 编码为base64
+                with open(img_path, "rb") as f:
+                    base64_img = base64.b64encode(f.read()).decode('utf-8')
+                    encoded_images.append({
+                        'sheet_name': page_name,
+                        'base64': base64_img
+                    })
+        else:
+            # Excel转换
+            from excel_to_image import ExcelToImageConverter, get_excel_reader
+            converter = ExcelToImageConverter()
+            sheet_names, _ = get_excel_reader(input_path)
+            for idx, sheet_name in enumerate(sheet_names):
+                # 如果指定了选中的Sheet，只处理选中的
+                if selected_indices is not None and idx not in selected_indices:
+                    continue
+                converter = ExcelToImageConverter()
+                img = converter.convert_sheet(input_path, idx)
+                # 保存到临时文件
+                img_filename = f"glm_tmp_{file_id}_{idx}.png"
+                img_path = os.path.join(TEMP_DIR, img_filename)
+                img.save(img_path, 'PNG')
+                temp_image_paths.append(img_path)
+                # 编码为base64
+                with open(img_path, "rb") as f:
+                    base64_img = base64.b64encode(f.read()).decode('utf-8')
+                    encoded_images.append({
+                        'sheet_name': sheet_name,
+                        'base64': base64_img
+                    })
+
+        # 2. 一次性调用GLM API，传入所有图片
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        # 构建prompt，要求一次性返回所有数据
+        if configurable_fields and len(configurable_fields) > 0:
+            # 使用用户自定义字段
+            field_desc = "\n".join([
+                f"  - {f['key']}: {f['name']} - {f['description']}"
+                for f in configurable_fields
+            ])
+            example_items = ",\n    ".join([
+                f'      "{f["key"]}": "{f["name"]}字符串"'
+                for f in configurable_fields
+            ])
+            fields_prompt = f"""
+你需要识别表格中的商品数据，按照以下指定字段提取：
+{field_desc}
+
+输出要求：
+- 所有字段**必须都是字符串类型**
+- 必须只返回一个完整的JSON，格式如下：
+{{
+  "items": [
+    {{
+{example_items}
+    }}
+  ]
+}}
+"""
+        else:
+            # 默认字段
+            fields_prompt = """
+请识别这张/这些价格表图片中的所有商品规格和原价。
+多个图片对应多个Sheet，请把所有表格的数据合并到一个结果中。
+
+输出要求：
+1. 提取所有表格中的每一行数据
+2. 第一列通常是规格(如 76, 89, 114 等)，其他列是不同类型(如 卡箍, 弯头, 三通 等)和价格
+3. 每行每个规格-类型-价格组合输出一条记录
+4. **所有字段都必须是字符串类型**，包括价格
+5. **必须只返回一个完整的JSON**，格式如下：
+{
+  "items": [
+    {
+      "spec": "规格名称",
+      "ruleName": "类型名称",
+      "originalPrice": "价格字符串"
+    }
+  ]
+}
+"""
+
+        prompt = fields_prompt + """
+
+重要提醒：
+- 如果单元格为空，跳过不输出
+- 价格只保留数字，不要带货币符号、空格等，但必须输出为字符串，不能是数字类型
+- **只输出JSON，绝对不要输出任何其他解释文字、markdown标记、反引号**
+- **确保JSON格式正确，不要有多余逗号，不要有多个JSON对象**
+- 所有数据放在一个items数组里
+
+最后警告：
+- 你的输出 **必须** 仅仅是纯粹的JSON
+- 不允许有任何额外的文字、说明、问候、标记
+- 不允许用```json 和 ```包裹
+- 直接输出JSON，说完就结束
+"""
+
+        # 构建消息内容，每个图片一个image_url
+        content = [{"type": "text", "text": prompt}]
+        for img in encoded_images:
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{img['base64']}"
+                }
+            })
+
+        payload = {
+            "model": "glm-4.1v-thinking-flash",
+            "max_tokens": 16384,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": content
+                }
+            ]
+        }
+
+        response = requests.post(GLM_API_URL, headers=headers, json=payload, timeout=300)
+
+        # 处理限流错误
+        if response.status_code == 429:
+            # 清理临时文件
+            for img_path in temp_image_paths:
+                os.remove(img_path)
+            os.remove(input_path)
+            return ParseResponse(
+                success=False,
+                message='请求频率过高或额度不足，请稍后重试。需要充值可以访问智谱AI官网: https://open.bigmodel.cn/',
+                data=None
+            )
+
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            # 清理临时文件
+            for img_path in temp_image_paths:
+                os.remove(img_path)
+            os.remove(input_path)
+            if response.status_code == 429:
+                return ParseResponse(
+                    success=False,
+                    message='请求频率过高或额度不足，请稍后重试。充值地址: https://open.bigmodel.cn/',
+                    data=None
+                )
+            raise e
+
+        result = response.json()
+
+        # 提取回复内容
+        content = result['choices'][0]['message']['content']
+
+        # 打印原始内容到控制台，方便调试
+        print("\n" + "="*60)
+        print("GLM返回的原始内容:")
+        print(content)
+        print("="*60 + "\n")
+
+        # 提取并解析JSON
+        import re
+        # 第一步：提取出JSON部分 - 找从第一个 { 到最后一个 }
+        start = content.find('{')
+        end = content.rfind('}') + 1
+        if start >= 0 and end > start:
+            json_candidate = content[start:end]
+        else:
+            # 清理临时文件
+            for img_path in temp_image_paths:
+                os.remove(img_path)
+            os.remove(input_path)
+            return ParseResponse(
+                success=False,
+                message='GLM未返回JSON格式内容',
+                data=None
+            )
+
+        # 第二步：修复常见的JSON格式错误
+        fixed = json_candidate
+        # 1. 移除行尾注释（// ...）
+        fixed = re.sub(r'//.*$', '', fixed, flags=re.MULTILINE)
+        # 2. 移除多行注释（/* ... */）
+        fixed = re.sub(r'/\*.*?\*/', '', fixed, flags=re.DOTALL)
+        # 3. 修复 trailing commas: ", }" → " }" 和 ", ]" → " ]"
+        fixed = re.sub(r',\s*([\]}])', r'\1', fixed)
+        # 4. 修复多行情况下的 trailing commas
+        fixed = re.sub(r',\s*\n\s*([\]}])', r'\n\1', fixed)
+        # 5. 修复单引号改双引号
+        fixed = re.sub(r"'([^']*)':", r'"\1":', fixed)
+        # 6. 移除空行
+        fixed = re.sub(r'\n\s*\n', r'\n', fixed)
+        # 7. 如果有多个JSON对象，尝试合并items
+        if '}{' in fixed:
+            # 多个JSON连在一起，尝试提取所有items数组合并
+            import re
+            items_blocks = re.findall(r'"items"\s*:\s*\[', fixed)
+            if len(items_blocks) > 1:
+                # 简单方案：取出所有items，合并成一个
+                fixed = re.sub(r'\}\s*\{', ',', fixed)
+                if 'items' in fixed:
+                    # 重新包装
+                    fixed = '{"items": [' + re.findall(r'\{(.*)\}', fixed)[0] + ']}'
+
+        # 压缩空格
+        compact = re.sub(r'\s+', ' ', fixed)
+
+        # 尝试解析
+        try:
+            data = json.loads(fixed)
+        except json.JSONDecodeError as e1:
+            try:
+                data = json.loads(compact)
+            except json.JSONDecodeError as e2:
+                # 清理临时文件
+                for img_path in temp_image_paths:
+                    os.remove(img_path)
+                os.remove(input_path)
+                # 返回原始内容帮助调试
+                return ParseResponse(
+                    success=False,
+                    message=f'JSON解析失败。GLM返回内容不规范。错误: {str(e1)}',
+                    data=None
+                )
+
+        items = data.get('items', [])
+        if not items:
+            # 清理临时文件
+            for img_path in temp_image_paths:
+                os.remove(img_path)
+            os.remove(input_path)
+            return ParseResponse(
+                success=False,
+                message='GLM未识别出任何商品数据，请检查图片清晰度',
+                data=None
+            )
+
+        # 转换为统一格式，保留所有动态字段
+        output_items = []
+        for item in items:
+            try:
+                # 提取必填的核心字段
+                spec = ''
+                original_price = 0
+                rule_name = ''
+
+                # 尝试从item中提取核心字段，如果不存在留空
+                for key in item.keys():
+                    if key in ['spec', '规格', 'name']:
+                        spec = str(item.get(key, '')).strip()
+                    if key in ['originalPrice', '原价', 'price', '价格']:
+                        price_val = item.get(key, '0')
+                        if isinstance(price_val, str):
+                            price_str = ''.join(c for c in price_val if c.isdigit() or c == '.')
+                            original_price = float(price_str) if price_str else 0
+                        else:
+                            original_price = float(price_val) if price_val else 0
+                    if key in ['ruleName', '类型', 'rule', '分类']:
+                        rule_name = str(item.get(key, '')).strip()
+
+                # 保留所有原始字段，添加id等固定字段
+                output_item = dict(item)
+                output_item['id'] = str(uuid.uuid4())[:8]
+                output_item['sheetName'] = 'Excel识别'
+                output_item['tableIndex'] = 0
+                # 确保核心字段存在
+                if 'spec' not in output_item and spec:
+                    output_item['spec'] = spec
+                if 'originalPrice' not in output_item:
+                    output_item['originalPrice'] = original_price
+                if 'ruleName' not in output_item and rule_name:
+                    output_item['ruleName'] = rule_name
+
+                # 检查必须的spec和price
+                spec_val = output_item.get('spec', '')
+                price_val = output_item.get('originalPrice', 0)
+                if not spec_val:
+                    continue
+                if isinstance(price_val, str):
+                    price_str = ''.join(c for c in str(price_val) if c.isdigit() or c == '.')
+                    output_item['originalPrice'] = float(price_str) if price_str else 0
+                if output_item['originalPrice'] <= 0:
+                    continue
+
+                output_items.append(output_item)
+            except Exception:
+                continue
+
+        if not output_items:
+            # 清理临时文件
+            for img_path in temp_image_paths:
+                os.remove(img_path)
+            os.remove(input_path)
+            return ParseResponse(
+                success=False,
+                message='解析后无有效数据，请检查图片内容',
+                data=None
+            )
+
+        # 收集所有不重复的rules
+        rules = list(set(item['ruleName'] for item in output_items if item['ruleName']))
+        if not rules:
+            rules = ["价格"]
+
+        tables = [{
+            'sheetName': 'Excel识别',
+            'tableTitle': 'GLM AI识别价格表',
+            'date': None,
+            'rules': rules,
+            'items': output_items
+        }]
+
+        # 清理临时文件
+        for img_path in temp_image_paths:
+            os.remove(img_path)
+        os.remove(input_path)
+
+        # 返回结果
+        return ParseResponse(
+            success=True,
+            message=f'GLM识别成功，共 {len(output_items)} 个价格项',
+            data={
+                'sheets': ['Excel识别'],
+                'tables': tables,
+                'totalItems': len(output_items)
+            }
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return ParseResponse(success=False, message=f"GLM解析失败: {str(e)}", data=None)
+
+
 @app.post("/api/generate")
 async def generate_excel(request: GenerateRequest):
     """
     根据前端编辑后的价格数据生成Excel文件并返回下载
+    支持动态自定义字段，每个item占一行，包含所有字段
     """
     try:
         if len(request.items) == 0:
@@ -349,34 +858,52 @@ async def generate_excel(request: GenerateRequest):
 
         # 按sheet分组
         from collections import defaultdict
-        items_by_sheet: defaultdict[str, List[GeneratedItem]] = defaultdict(list)
-        sheet_item_map: dict[str, dict[str, list[tuple[str, float]]]] = defaultdict(lambda: defaultdict(list))
+        items_by_sheet: defaultdict[str, List[dict]] = defaultdict(list)
+        # 将items转为dict并按sheet分组
         for item in request.items:
-            sheet_name = item.sheetName if hasattr(item, 'sheetName') else item.spec
-            # 按规格分组，同一个规格一行，多个规则分列
-            sheet_item_map[sheet_name][item.spec].append((item.ruleName, item.originalPrice, item.profitPercent))
-
-        items_by_sheet = sheet_item_map
+            # Pydantic v2 方式获取所有字段（包括额外字段）
+            if hasattr(item, 'model_dump'):
+                item_dict = item.model_dump()
+            else:
+                item_dict = item.__dict__
+                if '_state' in item_dict:
+                    del item_dict['_state']
+            sheet_name = item_dict.get('sheetName', '报价')
+            items_by_sheet[sheet_name].append(item_dict)
 
         sheet_info_map = {si.sheetName: si for si in request.sheetInfos}
 
-        for sheet_name, spec_dict in items_by_sheet.items():
+        # 固定字段（排除不导出的字段）
+        exclude_fields = ['id', 'sheetName', 'tableIndex', 'selectedForBatch', 'selectedForExport']
+
+        for sheet_name, items in items_by_sheet.items():
             ws = wb.create_sheet(title=sheet_name)
             sheet_info = sheet_info_map.get(sheet_name)
             title = sheet_info.tableTitle if sheet_info and sheet_info.tableTitle else sheet_name
             date = sheet_info.date if sheet_info else None
 
             current_row = 1
-            # 获取所有不重复的规格和规则
-            specs = sorted(spec_dict.keys())
-            # 收集所有规则
-            rules = set()
-            for spec_items in spec_dict.values():
-                for (rule, _, _) in spec_items:
-                    rules.add(rule)
-            rules = sorted(rules)
 
-            total_cols = len(rules) + 1
+            # 收集所有列名：从所有items中收集所有不重复的字段
+            all_columns = set()
+            for item in items:
+                for key in item.keys():
+                    if key not in exclude_fields:
+                        all_columns.add(key)
+            # 固定列顺序：spec, ruleName, originalPrice, profitPercent, calculatedPrice，然后是其他自定义字段
+            fixed_order = ['spec', 'ruleName', 'originalPrice', 'profitPercent', 'calculatedPrice']
+            columns = []
+            # 先加固定顺序的列（如果存在）
+            for col in fixed_order:
+                if col in all_columns:
+                    columns.append(col)
+                    all_columns.discard(col)
+            # 再加剩余的自定义字段，按字母排序
+            for col in sorted(all_columns):
+                if col not in exclude_fields:
+                    columns.append(col)
+
+            total_cols = len(columns)
             end_col_letter = get_column_letter(total_cols)
 
             # 标题
@@ -391,9 +918,9 @@ async def generate_excel(request: GenerateRequest):
 
             # 说明行 - 收集所有利润率
             all_profits = []
-            for spec_items in spec_dict.values():
-                for (_, _, profit) in spec_items:
-                    all_profits.append(profit)
+            for item in items:
+                if 'profitPercent' in item:
+                    all_profits.append(float(item['profitPercent']))
             unique_profits = set(all_profits)
             if len(unique_profits) == 1:
                 profit_str = f"利润率: +{list(unique_profits)[0]}%"
@@ -403,23 +930,25 @@ async def generate_excel(request: GenerateRequest):
             cell = ws[f'A{current_row}']
             cell.value = profit_str
             cell.alignment = left_align
-            if date:
+            if date and total_cols >= 4:
                 date_cell = ws.cell(row=current_row, column=total_cols)
                 date_cell.value = date
                 date_cell.alignment = Alignment(horizontal='right', vertical='center')
             current_row += 1
 
             # 表头
-            spec_header_cell = ws.cell(row=current_row, column=1)
-            spec_header_cell.value = '规格'
-            spec_header_cell.font = header_font
-            spec_header_cell.alignment = center_align
-            spec_header_cell.border = thin_border
-            spec_header_cell.fill = header_fill
+            col_display_names = {
+                'spec': '规格',
+                'ruleName': '类型',
+                'originalPrice': '原价',
+                'profitPercent': '利润率(%)',
+                'calculatedPrice': '计算后价格',
+            }
 
-            for col_idx, rule in enumerate(rules, start=2):
+            for col_idx, col_key in enumerate(columns, start=1):
+                display_name = col_display_names.get(col_key, col_key)
                 cell = ws.cell(row=current_row, column=col_idx)
-                cell.value = rule
+                cell.value = display_name
                 cell.font = header_font
                 cell.alignment = center_align
                 cell.border = thin_border
@@ -427,36 +956,39 @@ async def generate_excel(request: GenerateRequest):
 
             current_row += 1
 
-            # 写入数据按规格分组，同一规格一行显示所有规则价格
-            for row_idx, spec in enumerate(specs):
-                spec_items = spec_dict[spec]
-                # 规格列
-                cell = ws.cell(row=current_row, column=1)
-                cell.value = spec
-                cell.alignment = center_align
-                cell.border = thin_border
-                if row_idx % 2 == 1:
-                    cell.fill = alt_row_fill
+            # 写入数据，每行一个item
+            for row_idx, item in enumerate(items):
+                for col_idx, col_key in enumerate(columns, start=1):
+                    value = item.get(col_key, '')
 
-                # 价格列
-                for col_idx, rule in enumerate(rules, start=2):
-                    found = next((item for item in spec_items if item[0] == rule), None)
-                    if found:
-                        _, original_price, profit_percent = found
+                    # 对价格特殊处理，利润率计算
+                    if col_key == 'calculatedPrice' and 'originalPrice' in item and 'profitPercent' in item:
+                        original_price = float(item['originalPrice'])
+                        profit_percent = float(item['profitPercent'])
                         multiplier = 1 + profit_percent / 100
-                        price = round(original_price * multiplier, 1)
-                        cell = ws.cell(row=current_row, column=col_idx)
-                        cell.value = price
-                        cell.alignment = center_align
-                        cell.border = thin_border
-                        if row_idx % 2 == 1:
-                            cell.fill = alt_row_fill
+                        value = round(original_price * multiplier, 2)
+                    elif col_key in ['originalPrice', 'calculatedPrice'] and value is not None and value != '':
+                        # 保持数值格式
+                        try:
+                            value = float(value)
+                        except:
+                            pass
+                    elif col_key == 'profitPercent' and value is not None and value != '':
+                        try:
+                            value = float(value)
+                        except:
+                            pass
+
+                    cell = ws.cell(row=current_row, column=col_idx)
+                    cell.value = value
+                    # 数字右对齐，其他居中
+                    if col_key in ['originalPrice', 'profitPercent', 'calculatedPrice']:
+                        cell.alignment = Alignment(horizontal='right', vertical='center')
                     else:
-                        cell = ws.cell(row=current_row, column=col_idx)
-                        cell.value = ''
-                        cell.border = thin_border
-                        if row_idx % 2 == 1:
-                            cell.fill = alt_row_fill
+                        cell.alignment = center_align
+                    cell.border = thin_border
+                    if row_idx % 2 == 1:
+                        cell.fill = alt_row_fill
 
                 current_row += 1
 
@@ -465,11 +997,11 @@ async def generate_excel(request: GenerateRequest):
                 max_length = 0
                 column = col[0].column
                 for cell in col:
-                    if cell.value:
+                    if cell.value is not None:
                         cell_length = len(str(cell.value))
                         if cell_length > max_length:
                             max_length = cell_length
-                adjusted_width = max_length * 1.5 + 3
+                adjusted_width = max_length * 1.3 + 2
                 ws.column_dimensions[get_column_letter(column)].width = adjusted_width
 
         # 保存

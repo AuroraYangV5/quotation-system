@@ -5,6 +5,7 @@ import type { PriceItem } from "@/types";
 interface ItemTableRowProps {
   item: PriceItem;
   index: number;
+  customFields: {key: string, name: string}[];
   onProfitChange: (id: string, profit: number) => void;
   onToggleBatch: (id: string) => void;
   onToggleExport: (id: string) => void;
@@ -13,6 +14,7 @@ interface ItemTableRowProps {
 export function ItemTableRow({
   item,
   index,
+  customFields,
   onProfitChange,
   onToggleBatch,
   onToggleExport,
@@ -21,6 +23,11 @@ export function ItemTableRow({
     <tr className={index % 2 === 1 ? "bg-gray-50" : ""}>
       <td className="p-2 border border-gray-200 text-sm">{item.spec}</td>
       <td className="p-2 border border-gray-200 text-sm">{item.ruleName || "-"}</td>
+      {customFields.map(({key}) => (
+        <td key={key} className="p-2 border border-gray-200 text-sm">
+          {item[key] != null ? String(item[key]) : "-"}
+        </td>
+      ))}
       <td className="p-2 border border-gray-200 text-sm text-right">
         ¥{item.originalPrice.toFixed(2)}
       </td>

@@ -10,6 +10,7 @@ export interface PriceItem {
   calculatedPrice: number;
   selectedForBatch: boolean;  // 选中用于批量设置利润率
   selectedForExport: boolean; // 选中用于导出
+  [key: string]: any; // 支持动态自定义字段
 }
 
 // 表格数据
@@ -40,6 +41,7 @@ export interface GenerateRequest {
     ruleName: string;
     originalPrice: number;
     profitPercent: number;
+    [key: string]: any;
   }[];
   sheetInfos: {
     sheetName: string;

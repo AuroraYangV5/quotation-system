@@ -5,3 +5,5 @@ fastapi
 python-multipart
 uvicorn
 requests
+pdf2image
+Pillow

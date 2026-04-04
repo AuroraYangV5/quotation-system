@@ -23,6 +23,9 @@ interface ItemTableProps {
   onToggleExport: (id: string) => void;
 }
 
+// 获取所有动态字段（排除固定字段）
+const fixedFields = ['id', 'sheetName', 'tableIndex', 'spec', 'ruleName', 'originalPrice', 'profitPercent', 'calculatedPrice', 'selectedForBatch', 'selectedForExport'];
+
 export function ItemTable({
   sheetNames,
   selectedSheet,
@@ -41,6 +44,20 @@ export function ItemTable({
   onToggleBatch,
   onToggleExport,
 }: ItemTableProps) {
+  // 收集所有自定义字段（从所有items中收集）
+  const customFields: {key: string, name: string}[] = [];
+  const customFieldKeys = new Set<string>();
+  if (filteredItems.length > 0) {
+    filteredItems.forEach(item => {
+      Object.keys(item).forEach(key => {
+        if (!fixedFields.includes(key) && !customFieldKeys.has(key)) {
+          customFieldKeys.add(key);
+          customFields.push({key, name: key});
+        }
+      });
+    });
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -79,8 +96,13 @@ export function ItemTable({
               <tr className="bg-gray-100">
                 <th className="p-2 text-left border border-gray-200 text-sm">规格</th>
                 <th className="p-2 text-left border border-gray-200 text-sm">类型</th>
+                {customFields.map(field => (
+                  <th key={field.key} className="p-2 text-left border border-gray-200 text-sm">
+                    {field.name}
+                  </th>
+                ))}
                 <th className="p-2 text-right border border-gray-200 text-sm">原价</th>
-                <th className="p-2 text-center border border-gray-200 text-sm">利润率 (%)</th>
+                <th className="p-2 text-center border border-gray-200 text-sm w-24">利润率 (%)</th>
                 <th className="p-2 text-right border border-gray-200 text-sm">计算后价格</th>
                 <th className="p-2 text-center border border-gray-200 text-sm w-26">选择设置利润</th>
                 <th className="p-2 text-center border border-gray-200 text-sm w-26">选择导出</th>
@@ -92,6 +114,7 @@ export function ItemTable({
                   key={item.id}
                   item={item}
                   index={idx}
+                  customFields={customFields}
                   onProfitChange={onProfitChange}
                   onToggleBatch={onToggleBatch}
                   onToggleExport={onToggleExport}
