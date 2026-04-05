@@ -296,7 +296,7 @@ class PriceParser:
                     end_col_letter = openpyxl.utils.get_column_letter(total_cols)
                     ws.merge_cells(f'A{current_row}:{end_col_letter}{current_row}')
                     cell = ws[f'A{current_row}']
-                    cell.value = f"{title} 报价表"
+                    cell.value = f"{title}"
                     cell.font = title_font
                     cell.alignment = center_align
                     cell.fill = title_fill

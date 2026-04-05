@@ -33,6 +33,8 @@ export default function PreviewPage() {
     toggleSelectAllBatchCurrentTable,
     toggleSelectAllExportCurrentTable,
     handleItemProfitChange,
+    updateTableTitle,
+    updateSheetName,
     batchUpdateProfit,
     setGlobalProfitAll,
   } = usePreviewPage();
@@ -72,6 +74,7 @@ export default function PreviewPage() {
             currentTableHasAllBatchSelected={currentTableHasAllBatchSelected}
             currentTableHasAllExportSelected={currentTableHasAllExportSelected}
             tableTitle={currentTable.tableTitle}
+            currentSheetName={currentTable.sheetName}
             exportSelectedCount={exportSelectedCount}
             hasExportSelection={hasExportSelection}
             onSheetSelect={setSelectedSheet}
@@ -81,6 +84,8 @@ export default function PreviewPage() {
             onProfitChange={handleItemProfitChange}
             onToggleBatch={toggleBatchSelection}
             onToggleExport={toggleExportSelection}
+            onUpdateTableTitle={updateTableTitle}
+            onUpdateSheetName={updateSheetName}
           />
         )}
       </div>

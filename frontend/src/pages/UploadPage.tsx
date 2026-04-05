@@ -1,70 +1,95 @@
-import React, { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Trash2, Plus } from 'lucide-react';
-import { parseFile, parseFileByGLM, recognizeImage } from '@/api';
-import { ImageUploadArea } from '@/components/upload/ImageUploadArea';
-import type { TableData, PriceItem, ParseResponse } from '@/types';
+import React, { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { useMutation } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { parseFile, parseFileByGLM, recognizeImage } from "@/api";
+import { ImageUploadArea } from "@/components/upload/ImageUploadArea";
+import CustomExtractionFields from "@/components/upload/CustomExtractionFields";
+import ImagePreviewSelector from "@/components/upload/ImagePreviewSelector";
+import FieldConfirmDialog from "@/components/upload/FieldConfirmDialog";
+import type { TableData, PriceItem, ParseResponse } from "@/types";
 
 // 预览图片接口类型
-interface PreviewImage {
+export interface PreviewImage {
   url: string;
   sheet_name: string;
   index: number;
 }
 
 // 可配置字段
-interface ConfigurableField {
+export interface ConfigurableField {
   key: string;
   name: string;
   description: string;
   required: boolean;
 }
 
-type UploadMode = 'excel' | 'image';
+type UploadMode = "excel" | "image";
 
 export default function UploadPage() {
   const navigate = useNavigate();
-  const [uploadMode, setUploadMode] = useState<UploadMode>('excel');
+  const [uploadMode, setUploadMode] = useState<UploadMode>("excel");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [defaultProfit, setDefaultProfit] = useState(20);
   const [useGLM, setUseGLM] = useState(false);
-  const [previewImages, setPreviewImages] = useState<PreviewImage[] | null>(null);
+  const [previewImages, setPreviewImages] = useState<PreviewImage[] | null>(
+    null
+  );
   const [selectedSheets, setSelectedSheets] = useState<Set<number>>(new Set());
   const [previewLoading, setPreviewLoading] = useState(false);
   const [zoomImage, setZoomImage] = useState<string | null>(null);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+
   // 可配置提取字段
   const [fields, setFields] = useState<ConfigurableField[]>([
-    { key: 'spec', name: '规格', description: '商品规格/型号', required: true },
-    { key: 'ruleName', name: '类型', description: '商品类型/名称', required: true },
-    { key: 'originalPrice', name: '原价', description: '原价价格', required: true },
+    { key: "spec", name: "规格", description: "商品规格/型号", required: true },
+    {
+      key: "ruleName",
+      name: "类型",
+      description: "商品类型/名称",
+      required: true,
+    },
+    {
+      key: "originalPrice",
+      name: "原价",
+      description: "原价价格",
+      required: true,
+    },
   ]);
-  const [newFieldKey, setNewFieldKey] = useState('');
-  const [newFieldName, setNewFieldName] = useState('');
-  const [newFieldDesc, setNewFieldDesc] = useState('');
+  const [newFieldName, setNewFieldName] = useState("");
+  const [newFieldDesc, setNewFieldDesc] = useState("");
 
   // 处理解析成功后的通用逻辑
   const handleParseSuccess = (data: ParseResponse) => {
     if (data.success && data.data) {
       // 初始化每个商品的利润率为默认值
-      const tables: TableData[] = data.data.tables.map(table => ({
+      const tables: TableData[] = data.data.tables.map((table) => ({
         ...table,
-        items: table.items.map((item: Omit<PriceItem, 'profitPercent' | 'calculatedPrice' | 'selectedForBatch' | 'selectedForExport'>) => ({
-          ...item,
-          profitPercent: defaultProfit,
-          calculatedPrice: item.originalPrice * (1 + defaultProfit / 100),
-          selectedForBatch: false,
-          selectedForExport: false,
-        })),
+        items: table.items.map(
+          (
+            item: Omit<
+              PriceItem,
+              | "profitPercent"
+              | "calculatedPrice"
+              | "selectedForBatch"
+              | "selectedForExport"
+            >
+          ) => ({
+            ...item,
+            profitPercent: defaultProfit,
+            calculatedPrice: item.originalPrice * (1 + defaultProfit / 100),
+            selectedForBatch: false,
+            selectedForExport: false,
+          }),
+        ),
       }));
       // 保存到sessionStorage，跳转到编辑页面
-      sessionStorage.setItem('quotation-tables', JSON.stringify(tables));
-      navigate('/preview');
+      sessionStorage.setItem("quotation-tables", JSON.stringify(tables));
+      navigate("/preview");
     }
   };
 
@@ -83,9 +108,9 @@ export default function UploadPage() {
 
   const convertPreviewMutation = async (file: File) => {
     const formData = new FormData();
-    formData.append('file', file);
-    const response = await fetch('/api/parse-by-glm-preview', {
-      method: 'POST',
+    formData.append("file", file);
+    const response = await fetch("/api/parse-by-glm-preview", {
+      method: "POST",
       body: formData,
     });
     return response.json();
@@ -103,13 +128,15 @@ export default function UploadPage() {
       const result = await convertPreviewMutation(selectedFile);
       if (result.success && result.data) {
         // 添加index，默认全选
-        const imagesWithIndex = result.data.images.map((img: any, idx: number) => ({
-          ...img,
-          index: idx,
-        }));
+        const imagesWithIndex = result.data.images.map(
+          (img: any, idx: number) => ({
+            ...img,
+            index: idx,
+          })
+        );
         setPreviewImages(imagesWithIndex);
         // 默认全选所有Sheet
-        const allIndices = new Set(imagesWithIndex.map(img => img.index));
+        const allIndices = new Set(imagesWithIndex.map((img) => img.index));
         setSelectedSheets(allIndices);
       } else {
         alert(`转换失败: ${result.message}`);
@@ -136,29 +163,33 @@ export default function UploadPage() {
     if (selectedSheets.size === previewImages.length) {
       setSelectedSheets(new Set());
     } else {
-      const allIndices = new Set(previewImages.map(img => img.index));
+      const allIndices = new Set(previewImages.map((img) => img.index));
       setSelectedSheets(allIndices);
     }
   };
 
   const addField = () => {
-    if (!newFieldKey.trim()) {
-      alert('请输入字段key');
-      return;
-    }
     if (!newFieldName.trim()) {
-      alert('请输入字段名称');
+      alert("请输入字段名称");
       return;
     }
-    setFields([...fields, {
-      key: newFieldKey.trim(),
-      name: newFieldName.trim(),
-      description: newFieldDesc.trim(),
-      required: false,
-    }]);
-    setNewFieldKey('');
-    setNewFieldName('');
-    setNewFieldDesc('');
+    // 根据名称自动生成key：转小写，空格转下划线，保留中文
+    const autoKey = newFieldName
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_\u4e00-\u9fa5]/g, "");
+    setFields([
+      ...fields,
+      {
+        key: autoKey,
+        name: newFieldName.trim(),
+        description: newFieldDesc.trim(),
+        required: false,
+      },
+    ]);
+    setNewFieldName("");
+    setNewFieldDesc("");
   };
 
   const removeField = (index: number) => {
@@ -178,51 +209,63 @@ export default function UploadPage() {
   }, []);
 
   // Excel 文件处理
-  const handleExcelDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      validateAndSetExcelFile(file);
-    }
-  }, []);
+  const handleExcelDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        validateAndSetExcelFile(file);
+      }
+    },
+    []
+  );
 
-  const handleExcelFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      validateAndSetExcelFile(file);
-    }
-  }, []);
+  const handleExcelFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        validateAndSetExcelFile(file);
+      }
+    },
+    []
+  );
 
   function validateAndSetExcelFile(file: File) {
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'xls' && ext !== 'xlsx' && ext !== 'pdf') {
-      alert('只支持 .xls .xlsx .pdf 格式');
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext !== "xls" && ext !== "xlsx" && ext !== "pdf") {
+      alert("只支持 .xls .xlsx .pdf 格式");
       return;
     }
     setSelectedFile(file);
   }
 
   // 图片文件处理
-  const handleImageDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      validateAndSetImageFile(file);
-    }
-  }, []);
+  const handleImageDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        validateAndSetImageFile(file);
+      }
+    },
+    []
+  );
 
-  const handleImageFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      validateAndSetImageFile(file);
-    }
-  }, []);
+  const handleImageFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        validateAndSetImageFile(file);
+      }
+    },
+    []
+  );
 
   function validateAndSetImageFile(file: File) {
-    if (!file.type.startsWith('image/')) {
-      alert('只支持图片文件');
+    if (!file.type.startsWith("image/")) {
+      alert("只支持图片文件");
       return;
     }
     setSelectedFile(file);
@@ -234,21 +277,22 @@ export default function UploadPage() {
 
   function handleSubmit() {
     if (!selectedFile) {
-      alert('请先选择文件');
+      alert("请先选择文件");
       return;
     }
-    if (uploadMode === 'excel' && useGLM && !previewImages) {
+    if (uploadMode === "excel" && useGLM && !previewImages) {
       // GLM模式需要先预览转换后的图片
       handleConvertPreview();
       return;
     }
-    if (uploadMode === 'excel' && useGLM && previewImages) {
+    if (uploadMode === "excel" && useGLM && previewImages) {
       if (selectedSheets.size === 0) {
-        alert('请至少勾选一个Sheet进行解析');
+        alert("请至少勾选一个Sheet进行解析");
         return;
       }
-      parseByGlmMutation.mutate(selectedFile);
-    } else if (uploadMode === 'excel') {
+      // 弹出确认对话框，让用户确认自定义提取字段
+      setConfirmDialogOpen(true);
+    } else if (uploadMode === "excel") {
       if (useGLM) {
         parseByGlmMutation.mutate(selectedFile);
       } else {
@@ -259,17 +303,40 @@ export default function UploadPage() {
     }
   }
 
-  const isPending = previewLoading || (
-    uploadMode !== 'excel' ? recognizeMutation.isPending :
-    useGLM ? parseByGlmMutation.isPending : parseMutation.isPending
-  );
+  function confirmAndStart() {
+    setConfirmDialogOpen(false);
+    if (selectedFile) {
+      parseByGlmMutation.mutate(selectedFile);
+    }
+  }
+
+  function cancelConfirm() {
+    setConfirmDialogOpen(false);
+  }
+
+  function resetPreview() {
+    setPreviewImages(null);
+    setSelectedSheets(new Set());
+  }
+
+  const isPending =
+    previewLoading ||
+    (uploadMode !== "excel"
+      ? recognizeMutation.isPending
+      : useGLM
+      ? parseByGlmMutation.isPending
+      : parseMutation.isPending);
 
   return (
     <div className="min-h-screen from-blue-50 to-indigo-100 min-w-[1024px]">
       <div className="sticky top-0 z-50 bg-[#f5f7fa]/95 backdrop-blur-sm py-6 px-4">
         <div className="max-w-6xl mx-auto text-center">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">报价自动生成系统</h1>
-          <p className="text-gray-600">上传原价表，自定义利润率，一键生成新报价</p>
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">
+            报价自动生成系统
+          </h1>
+          <p className="text-gray-600">
+            上传原价表，自定义利润率，一键生成新报价
+          </p>
         </div>
       </div>
       <div className="max-w-6xl mx-auto pb-8 px-4 pt-6">
@@ -278,26 +345,28 @@ export default function UploadPage() {
             <div className="flex space-x-1">
               <button
                 onClick={() => {
-                  setUploadMode('excel');
+                  setUploadMode("excel");
                   setSelectedFile(null);
                 }}
                 className={`flex-1 py-2 px-4 rounded-t-lg font-medium transition-colors
-                  ${uploadMode === 'excel'
-                    ? 'bg-gray-100 border-b-2 border-primary text-primary'
-                    : 'bg-white text-gray-500 hover:bg-gray-200'
+                  ${
+                    uploadMode === "excel"
+                      ? "bg-gray-100 border-b-2 border-primary text-primary"
+                      : "bg-white text-gray-500 hover:bg-gray-200"
                   }`}
               >
                 Excel 文件上传
               </button>
               <button
                 onClick={() => {
-                  setUploadMode('image');
+                  setUploadMode("image");
                   setSelectedFile(null);
                 }}
                 className={`flex-1 py-2 px-4 rounded-t-lg font-medium transition-colors
-                  ${uploadMode === 'image'
-                    ? 'bg-gray-100 border-b-2 border-primary text-primary'
-                    : 'bg-white text-gray-500 hover:bg-gray-200'
+                  ${
+                    uploadMode === "image"
+                      ? "bg-gray-100 border-b-2 border-primary text-primary"
+                      : "bg-white text-gray-500 hover:bg-gray-200"
                   }`}
               >
                 图片 OCR 识别
@@ -306,15 +375,19 @@ export default function UploadPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             {/* 上传区域 根据模式显示 */}
-            {uploadMode === 'excel' ? (
+            {uploadMode === "excel" ? (
               <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleExcelDrop}
                 className={`h-[210px] border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all
-                  ${isDragging ? 'border-primary bg-primary/5' : 'border-gray-300 hover:border-primary hover:bg-gray-50'}
+                  ${
+                    isDragging
+                      ? "border-primary bg-primary/5"
+                      : "border-gray-300 hover:border-primary hover:bg-gray-50"
+                  }
                 `}
-                onClick={() => document.getElementById('fileInput')?.click()}
+                onClick={() => document.getElementById("fileInput")?.click()}
               >
                 <Input
                   id="fileInput"
@@ -377,100 +450,8 @@ export default function UploadPage() {
               </p>
             </div>
 
-            {/* 自定义提取字段（仅AI解析模式） */}
-            {uploadMode === 'excel' && useGLM && (
-              <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-700">自定义提取字段</h3>
-                  <p className="text-xs text-gray-500">GLM会按照你配置的字段提取数据</p>
-                </div>
-
-                <div className="space-y-2 max-h-[180px] overflow-y-auto">
-                  {fields.map((field, index) => (
-                    <div key={index} className="flex items-center gap-2 bg-white p-2 rounded border">
-                      <div className="grid grid-cols-3 gap-2 flex-1">
-                        <div>
-                          <p className="text-xs text-gray-500">Key</p>
-                          <Input
-                            value={field.key}
-                            disabled
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">名称</p>
-                          <Input
-                            value={field.name}
-                            disabled
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">说明</p>
-                          <Input
-                            value={field.description}
-                            disabled
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                      </div>
-                      {!field.required && (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={() => removeField(index)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <Input
-                      placeholder="key (如 brand)"
-                      value={newFieldKey}
-                      onChange={(e) => setNewFieldKey(e.target.value)}
-                      className="text-xs"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">JSON key</p>
-                  </div>
-                  <div>
-                    <Input
-                      placeholder="名称 (如 品牌)"
-                      value={newFieldName}
-                      onChange={(e) => setNewFieldName(e.target.value)}
-                      className="text-xs"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">显示名称</p>
-                  </div>
-                  <div>
-                    <Input
-                      placeholder="说明 (如 商品品牌)"
-                      value={newFieldDesc}
-                      onChange={(e) => setNewFieldDesc(e.target.value)}
-                      className="text-xs"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">字段说明</p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={addField}
-                  className="flex items-center gap-1"
-                >
-                  <Plus className="h-4 w-4" />
-                  添加字段
-                </Button>
-              </div>
-            )}
-
             {/* AI解析选项（仅Excel模式） */}
-            {uploadMode === 'excel' && (
+            {uploadMode === "excel" && (
               <div className="flex items-start space-x-3 p-4 bg-blue-50 rounded-lg">
                 <Checkbox
                   id="useGLM"
@@ -496,71 +477,27 @@ export default function UploadPage() {
               </div>
             )}
 
-            {/* 转换后的图片预览（供检查） */}
-            {uploadMode === 'excel' && useGLM && previewImages && previewImages.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-700">
-                    转换后的图片预览（勾选需要解析的Sheet）
-                  </h3>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={toggleSelectAll}
-                    >
-                      {selectedSheets.size === previewImages.length ? '取消全选' : '全选'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setPreviewImages(null);
-                        setSelectedSheets(new Set());
-                      }}
-                    >
-                      重新转换
-                    </Button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3 max-h-[400px] overflow-y-auto border rounded-lg p-3 bg-gray-50">
-                  {previewImages.map((img) => (
-                    <div key={img.index} className="flex flex-col space-y-1 relative">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`sheet-${img.index}`}
-                          checked={selectedSheets.has(img.index)}
-                          onChange={() => toggleSheetSelection(img.index)}
-                        />
-                        <label
-                          htmlFor={`sheet-${img.index}`}
-                          className="text-xs text-gray-500 cursor-pointer truncate"
-                          title={`Sheet ${img.index + 1}: ${img.sheet_name}`}
-                        >
-                          Sheet {img.index + 1}: {img.sheet_name}
-                        </label>
-                      </div>
-                      <div className="aspect-video bg-white border rounded overflow-hidden relative">
-                        <img
-                          src={img.url}
-                          alt={img.sheet_name}
-                          className="w-full h-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => setZoomImage(img.url)}
-                        />
-                        {!selectedSheets.has(img.index) && (
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded">
-                            <span className="text-xs text-white bg-black/70 px-2 py-1 rounded">已跳过</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-sm text-amber-600">
-                  ✅ 图片转换完成，勾选需要解析的Sheet。点击图片可放大查看清晰度。确认选择后点击"开始AI识别"继续。
-                  ({selectedSheets.size}/{previewImages.length} 已选中)
-                </p>
-              </div>
+            {/* 转换后的图片预览 + 自定义提取字段（供检查） */}
+            {uploadMode === "excel" && useGLM && previewImages && (
+              <>
+                <ImagePreviewSelector
+                  previewImages={previewImages}
+                  selectedSheets={selectedSheets}
+                  onToggleSheetSelection={toggleSheetSelection}
+                  onToggleSelectAll={toggleSelectAll}
+                  onResetPreview={resetPreview}
+                  onZoomImage={setZoomImage}
+                />
+                <CustomExtractionFields
+                  fields={fields}
+                  newFieldName={newFieldName}
+                  newFieldDesc={newFieldDesc}
+                  onNewFieldNameChange={setNewFieldName}
+                  onNewFieldDescChange={setNewFieldDesc}
+                  onAddField={addField}
+                  onRemoveField={removeField}
+                />
+              </>
             )}
 
             {/* 点击放大遮罩层 */}
@@ -577,6 +514,15 @@ export default function UploadPage() {
               </div>
             )}
 
+            {/* 确认弹窗 */}
+            <FieldConfirmDialog
+              open={confirmDialogOpen}
+              fields={fields}
+              isPending={parseByGlmMutation.isPending}
+              onConfirm={confirmAndStart}
+              onCancel={cancelConfirm}
+            />
+
             {/* 提交按钮 */}
             <Button
               className="w-full bg-[#1a1a1a] text-white"
@@ -586,18 +532,42 @@ export default function UploadPage() {
             >
               {isPending ? (
                 <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-100" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 1 5.373 1 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg
+                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-100"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 1 5.373 1 12h4zm2 5.291A7.962 7.962 7.938l3-2.647z"
+                    ></path>
                   </svg>
-                  {uploadMode === 'excel' && useGLM && !previewImages ? '转换中...' :
-                   uploadMode === 'excel' && useGLM ? 'AI识别中...' :
-                   uploadMode === 'excel' ? '解析中...' : '识别中...'}
+                  {uploadMode === "excel" && useGLM && !previewImages
+                    ? "转换中..."
+                    : uploadMode === "excel" && useGLM
+                    ? "AI识别中..."
+                    : uploadMode === "excel"
+                    ? "解析中..."
+                    : "识别中..."}
                 </>
+              ) : uploadMode === "excel" && useGLM && !previewImages ? (
+                "转换图片预览"
+              ) : uploadMode === "excel" && useGLM ? (
+                "开始AI识别"
+              ) : uploadMode === "excel" ? (
+                "开始解析"
               ) : (
-                uploadMode === 'excel' && useGLM && !previewImages ? '转换图片预览' :
-                uploadMode === 'excel' && useGLM ? '开始AI识别' :
-                uploadMode === 'excel' ? '开始解析' : '开始识别'
+                "开始识别"
               )}
             </Button>
           </CardContent>
@@ -608,7 +578,7 @@ export default function UploadPage() {
           <CardContent className="p-6">
             <h3 className="font-semibold text-gray-700 mb-2">使用说明：</h3>
             <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
-              {uploadMode === 'excel' ? (
+              {uploadMode === "excel" ? (
                 useGLM ? (
                   <>
                     <li>上传包含商品原价的 Excel 文件，使用 GLM-4V-Flash AI 视觉识别</li>

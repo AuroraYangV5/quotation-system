@@ -3,7 +3,10 @@ import type { TableData, PriceItem, GenerateRequest } from "@/types";
 /**
  * 获取当前选中的表格
  */
-export function getCurrentTable(tables: TableData[], selectedSheet: string): TableData | null {
+export function getCurrentTable(
+  tables: TableData[],
+  selectedSheet: string,
+): TableData | null {
   return tables.find((t) => t.sheetName === selectedSheet) || null;
 }
 
@@ -14,12 +17,12 @@ export function toggleItemSelectionInTables<T extends keyof PriceItem>(
   tables: TableData[],
   sheetName: string,
   itemId: string,
-  selectionKey: T
+  selectionKey: T,
 ): TableData[] {
   return tables.map((table) =>
     table.sheetName === sheetName
       ? toggleItemSelection(table, itemId, selectionKey)
-      : table
+      : table,
   );
 }
 
@@ -30,12 +33,12 @@ export function updateItemProfitInTables(
   tables: TableData[],
   sheetName: string,
   itemId: string,
-  profit: number
+  profit: number,
 ): TableData[] {
   return tables.map((table) =>
     table.sheetName === sheetName
       ? updateItemProfit(table, itemId, profit)
-      : table
+      : table,
   );
 }
 
@@ -44,18 +47,16 @@ export function updateItemProfitInTables(
  */
 export function convertToGenerateRequest(tables: TableData[]): GenerateRequest {
   return {
-    items: tables.flatMap(table =>
+    items: tables.flatMap((table) =>
       table.items
-        .filter(item => item.selectedForExport)
-        .map(item => ({
+        .filter((item) => item.selectedForExport)
+        .map((item) => ({
+          ...item,
           sheetName: table.sheetName,
-          spec: item.spec,
-          ruleName: item.ruleName,
-          originalPrice: item.originalPrice,
-          profitPercent: item.profitPercent,
-        }))
+          calculatedPrice: item.calculatedPrice,
+        })),
     ),
-    sheetInfos: tables.map(table => ({
+    sheetInfos: tables.map((table) => ({
       sheetName: table.sheetName,
       tableTitle: table.tableTitle,
       date: table.date,
@@ -66,13 +67,16 @@ export function convertToGenerateRequest(tables: TableData[]): GenerateRequest {
 /**
  * 根据关键词过滤表格项目
  */
-export function filterTableItems(items: PriceItem[], searchKeyword: string): PriceItem[] {
+export function filterTableItems(
+  items: PriceItem[],
+  searchKeyword: string,
+): PriceItem[] {
   if (!searchKeyword) return items;
   const keyword = searchKeyword.toLowerCase();
   return items.filter(
     (item) =>
       item.spec.toLowerCase().includes(keyword) ||
-      item.ruleName?.toLowerCase().includes(keyword)
+      item.ruleName?.toLowerCase().includes(keyword),
   );
 }
 
@@ -82,7 +86,7 @@ export function filterTableItems(items: PriceItem[], searchKeyword: string): Pri
 export function toggleItemSelection<T extends keyof PriceItem>(
   table: TableData,
   itemId: string,
-  selectionKey: T
+  selectionKey: T,
 ): TableData {
   return {
     ...table,
@@ -92,7 +96,7 @@ export function toggleItemSelection<T extends keyof PriceItem>(
             ...item,
             [selectionKey]: !(item[selectionKey] as boolean),
           }
-        : item
+        : item,
     ),
   };
 }
@@ -103,7 +107,7 @@ export function toggleItemSelection<T extends keyof PriceItem>(
 export function toggleSelectAllForTable<T extends keyof PriceItem>(
   table: TableData,
   selectionKey: T,
-  value: boolean
+  value: boolean,
 ): TableData {
   const allSelected = table.items.every((item) => item[selectionKey] === value);
   const newValue = allSelected ? !value : value;
@@ -123,7 +127,7 @@ export function toggleSelectAllForTable<T extends keyof PriceItem>(
 export function updateItemProfit(
   table: TableData,
   itemId: string,
-  profit: number
+  profit: number,
 ): TableData {
   return {
     ...table,
@@ -134,7 +138,7 @@ export function updateItemProfit(
             profitPercent: profit,
             calculatedPrice: item.originalPrice * (1 + profit / 100),
           }
-        : item
+        : item,
     ),
   };
 }
@@ -142,7 +146,10 @@ export function updateItemProfit(
 /**
  * 批量更新利润率
  */
-export function batchUpdateProfit(tables: TableData[], profit: number): TableData[] {
+export function batchUpdateProfit(
+  tables: TableData[],
+  profit: number,
+): TableData[] {
   return tables.map((table) => ({
     ...table,
     items: table.items.map((item) =>
@@ -153,7 +160,7 @@ export function batchUpdateProfit(tables: TableData[], profit: number): TableDat
             calculatedPrice: item.originalPrice * (1 + profit / 100),
             selectedForBatch: false,
           }
-        : item
+        : item,
     ),
   }));
 }
@@ -161,7 +168,10 @@ export function batchUpdateProfit(tables: TableData[], profit: number): TableDat
 /**
  * 全局设置所有项目利润率
  */
-export function setGlobalProfitAll(tables: TableData[], profit: number): TableData[] {
+export function setGlobalProfitAll(
+  tables: TableData[],
+  profit: number,
+): TableData[] {
   return tables.map((table) => ({
     ...table,
     items: table.items.map((item) => ({
@@ -176,7 +186,9 @@ export function setGlobalProfitAll(tables: TableData[], profit: number): TableDa
  * 获取所有需要导出的项目
  */
 export function getItemsToExport(tables: TableData[]): PriceItem[] {
-  return tables.flatMap((table) => table.items.filter((item) => item.selectedForExport));
+  return tables.flatMap((table) =>
+    table.items.filter((item) => item.selectedForExport),
+  );
 }
 
 /**
@@ -190,8 +202,10 @@ export function countSelectedItems(currentTable: TableData | null): {
     return { batchSelectedCount: 0, exportSelectedCount: 0 };
   }
   return {
-    batchSelectedCount: currentTable.items.filter((i) => i.selectedForBatch).length,
-    exportSelectedCount: currentTable.items.filter((i) => i.selectedForExport).length,
+    batchSelectedCount: currentTable.items.filter((i) => i.selectedForBatch)
+      .length,
+    exportSelectedCount: currentTable.items.filter((i) => i.selectedForExport)
+      .length,
   };
 }
 

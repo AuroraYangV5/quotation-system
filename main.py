@@ -864,6 +864,8 @@ async def generate_excel(request: GenerateRequest):
             # Pydantic v2 方式获取所有字段（包括额外字段）
             if hasattr(item, 'model_dump'):
                 item_dict = item.model_dump()
+            elif isinstance(item, dict):
+                item_dict = item
             else:
                 item_dict = item.__dict__
                 if '_state' in item_dict:
@@ -874,7 +876,8 @@ async def generate_excel(request: GenerateRequest):
         sheet_info_map = {si.sheetName: si for si in request.sheetInfos}
 
         # 固定字段（排除不导出的字段）
-        exclude_fields = ['id', 'sheetName', 'tableIndex', 'selectedForBatch', 'selectedForExport']
+        # 排除：id、sheetName、tableIndex、选择设置利润、选择导出、原价、利润率
+        exclude_fields = ['id', 'sheetName', 'tableIndex', 'selectedForBatch', 'selectedForExport', 'originalPrice', 'profitPercent']
 
         for sheet_name, items in items_by_sheet.items():
             ws = wb.create_sheet(title=sheet_name)
@@ -909,7 +912,7 @@ async def generate_excel(request: GenerateRequest):
             # 标题
             ws.merge_cells(f'A{current_row}:{end_col_letter}{current_row}')
             cell = ws[f'A{current_row}']
-            cell.value = f"{title} 报价表"
+            cell.value = f"{title}"
             cell.font = title_font
             cell.alignment = center_align
             cell.fill = title_fill
@@ -942,7 +945,7 @@ async def generate_excel(request: GenerateRequest):
                 'ruleName': '类型',
                 'originalPrice': '原价',
                 'profitPercent': '利润率(%)',
-                'calculatedPrice': '计算后价格',
+                'calculatedPrice': '价格',
             }
 
             for col_idx, col_key in enumerate(columns, start=1):
@@ -992,7 +995,7 @@ async def generate_excel(request: GenerateRequest):
 
                 current_row += 1
 
-            # 自动调整列宽
+            # 自动调整列宽 - 确保内容完全显示
             for col in ws.columns:
                 max_length = 0
                 column = col[0].column
@@ -1001,7 +1004,8 @@ async def generate_excel(request: GenerateRequest):
                         cell_length = len(str(cell.value))
                         if cell_length > max_length:
                             max_length = cell_length
-                adjusted_width = max_length * 1.3 + 2
+                # 使用更大的系数 + 增加最小宽度确保内容完全显示
+                adjusted_width = max(max_length * 2 + 2, 8)
                 ws.column_dimensions[get_column_letter(column)].width = adjusted_width
 
         # 保存

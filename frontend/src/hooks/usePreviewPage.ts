@@ -143,6 +143,30 @@ export function usePreviewPage() {
     setGlobalProfit(profit);
   };
 
+  // 更新表格标题
+  const updateTableTitle = (sheetName: string, newTitle: string) => {
+    const updatedTables = tables.map(table =>
+      table.sheetName === sheetName
+        ? { ...table, tableTitle: newTitle }
+        : table
+    );
+    setTables(updatedTables);
+  };
+
+  // 更新工作表名称
+  const updateSheetName = (oldSheetName: string, newSheetName: string) => {
+    const updatedTables = tables.map(table =>
+      table.sheetName === oldSheetName
+        ? { ...table, sheetName: newSheetName }
+        : table
+    );
+    setTables(updatedTables);
+    // 如果当前选中的就是被修改的sheet，更新选中状态
+    if (selectedSheet === oldSheetName) {
+      setSelectedSheet(newSheetName);
+    }
+  };
+
   const handleGenerate = () => {
     generateMutation.mutate();
   };
@@ -180,6 +204,8 @@ export function usePreviewPage() {
     toggleSelectAllBatchCurrentTable,
     toggleSelectAllExportCurrentTable,
     handleItemProfitChange,
+    updateTableTitle,
+    updateSheetName,
     batchUpdateProfit: () => {
       const profit = Number(batchProfitInput);
       if (!isNaN(profit) && profit >= 0 && profit <= 100) {
