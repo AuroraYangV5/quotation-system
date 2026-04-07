@@ -515,13 +515,13 @@ async def parse_excel_by_glm(
                         'base64': base64_img
                     })
 
-        # 2. 一次性调用GLM API，传入所有图片
+        # 2. 逐张图片串行调用GLM API，带指数退避重试应对频率限制
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
 
-        # 构建prompt，要求一次性返回所有数据
+        # 为单张图片构建prompt
         if configurable_fields and len(configurable_fields) > 0:
             # 使用用户自定义字段
             field_desc = "\n".join([
@@ -532,8 +532,8 @@ async def parse_excel_by_glm(
                 f'      "{f["key"]}": "{f["name"]}字符串"'
                 for f in configurable_fields
             ])
-            fields_prompt = f"""
-你需要识别表格中的商品数据，按照以下指定字段提取：
+            single_prompt = f"""
+你需要识别这张价格表图片中的所有商品数据，按照以下指定字段提取：
 {field_desc}
 
 输出要求：
@@ -549,12 +549,11 @@ async def parse_excel_by_glm(
 """
         else:
             # 默认字段
-            fields_prompt = """
-请识别这张/这些价格表图片中的所有商品规格和原价。
-多个图片对应多个Sheet，请把所有表格的数据合并到一个结果中。
+            single_prompt = """
+请识别这张价格表图片中的所有商品规格和原价。
 
 输出要求：
-1. 提取所有表格中的每一行数据
+1. 提取表格中的每一行数据
 2. 第一列通常是规格(如 76, 89, 114 等)，其他列是不同类型(如 卡箍, 弯头, 三通 等)和价格
 3. 每行每个规格-类型-价格组合输出一条记录
 4. **所有字段都必须是字符串类型**，包括价格
@@ -570,7 +569,7 @@ async def parse_excel_by_glm(
 }
 """
 
-        prompt = fields_prompt + """
+        prompt = single_prompt + """
 
 重要提醒：
 - 如果单元格为空，跳过不输出
@@ -586,232 +585,246 @@ async def parse_excel_by_glm(
 - 直接输出JSON，说完就结束
 """
 
-        # 构建消息内容，每个图片一个image_url
-        content = [{"type": "text", "text": prompt}]
-        for img in encoded_images:
-            content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/png;base64,{img['base64']}"
-                }
-            })
-
-        payload = {
-            "model": "glm-4.1v-thinking-flash",
-            "max_tokens": 16384,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": content
-                }
-            ]
-        }
-
-        response = requests.post(GLM_API_URL, headers=headers, json=payload, timeout=300)
-
-        # 处理限流错误
-        if response.status_code == 429:
-            # 清理临时文件
-            for img_path in temp_image_paths:
-                os.remove(img_path)
-            os.remove(input_path)
-            return ParseResponse(
-                success=False,
-                message='请求频率过高或额度不足，请稍后重试。需要充值可以访问智谱AI官网: https://open.bigmodel.cn/',
-                data=None
-            )
-
-        try:
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            # 清理临时文件
-            for img_path in temp_image_paths:
-                os.remove(img_path)
-            os.remove(input_path)
-            if response.status_code == 429:
-                return ParseResponse(
-                    success=False,
-                    message='请求频率过高或额度不足，请稍后重试。充值地址: https://open.bigmodel.cn/',
-                    data=None
-                )
-            raise e
-
-        result = response.json()
-
-        # 提取回复内容
-        content = result['choices'][0]['message']['content']
-
-        # 打印原始内容到控制台，方便调试
-        print("\n" + "="*60)
-        print("GLM返回的原始内容:")
-        print(content)
-        print("="*60 + "\n")
-
-        # 提取并解析JSON
+        # 逐张图片处理，串行调用
         import re
-        # 第一步：提取出JSON部分 - 找从第一个 { 到最后一个 }
-        start = content.find('{')
-        end = content.rfind('}') + 1
-        if start >= 0 and end > start:
-            json_candidate = content[start:end]
-        else:
-            # 清理临时文件
-            for img_path in temp_image_paths:
-                os.remove(img_path)
-            os.remove(input_path)
-            return ParseResponse(
-                success=False,
-                message='GLM未返回JSON格式内容',
-                data=None
-            )
+        import asyncio
 
-        # 第二步：修复常见的JSON格式错误
-        fixed = json_candidate
-        # 1. 移除行尾注释（// ...）
-        fixed = re.sub(r'//.*$', '', fixed, flags=re.MULTILINE)
-        # 2. 移除多行注释（/* ... */）
-        fixed = re.sub(r'/\*.*?\*/', '', fixed, flags=re.DOTALL)
-        # 3. 修复 trailing commas: ", }" → " }" 和 ", ]" → " ]"
-        fixed = re.sub(r',\s*([\]}])', r'\1', fixed)
-        # 4. 修复多行情况下的 trailing commas
-        fixed = re.sub(r',\s*\n\s*([\]}])', r'\n\1', fixed)
-        # 5. 修复单引号改双引号
-        fixed = re.sub(r"'([^']*)':", r'"\1":', fixed)
-        # 6. 移除空行
-        fixed = re.sub(r'\n\s*\n', r'\n', fixed)
-        # 7. 如果有多个JSON对象，尝试合并items
-        if '}{' in fixed:
-            # 多个JSON连在一起，尝试提取所有items数组合并
-            import re
-            items_blocks = re.findall(r'"items"\s*:\s*\[', fixed)
-            if len(items_blocks) > 1:
-                # 简单方案：取出所有items，合并成一个
-                fixed = re.sub(r'\}\s*\{', ',', fixed)
-                if 'items' in fixed:
-                    # 重新包装
-                    fixed = '{"items": [' + re.findall(r'\{(.*)\}', fixed)[0] + ']}'
+        all_output_items = []
+        all_errors = []
+        tables = []
+        max_retries = 3  # 最大重试次数
+        processed_sheets = []
 
-        # 压缩空格
-        compact = re.sub(r'\s+', ' ', fixed)
+        for img_info in encoded_images:
+            sheet_name = img_info['sheet_name']
+            base64_img = img_info['base64']
+            processed_sheets.append(sheet_name)
 
-        # 尝试解析
-        try:
-            data = json.loads(fixed)
-        except json.JSONDecodeError as e1:
-            try:
-                data = json.loads(compact)
-            except json.JSONDecodeError as e2:
-                # 清理临时文件
-                for img_path in temp_image_paths:
-                    os.remove(img_path)
-                os.remove(input_path)
-                # 返回原始内容帮助调试
-                return ParseResponse(
-                    success=False,
-                    message=f'JSON解析失败。GLM返回内容不规范。错误: {str(e1)}',
-                    data=None
-                )
+            print(f"正在处理: {sheet_name}")
 
-        items = data.get('items', [])
-        if not items:
-            # 清理临时文件
-            for img_path in temp_image_paths:
-                os.remove(img_path)
-            os.remove(input_path)
-            return ParseResponse(
-                success=False,
-                message='GLM未识别出任何商品数据，请检查图片清晰度',
-                data=None
-            )
+            # 指数退避重试
+            success = False
+            for retry in range(max_retries):
+                # 构建单张图片的请求
+                content = [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{base64_img}"
+                        }
+                    }
+                ]
 
-        # 转换为统一格式，保留所有动态字段
-        output_items = []
-        for item in items:
-            try:
-                # 提取必填的核心字段
-                spec = ''
-                original_price = 0
-                rule_name = ''
+                payload = {
+                    "model": "glm-4.1v-thinking-flash",
+                    "max_tokens": 16384,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": content
+                        }
+                    ]
+                }
 
-                # 尝试从item中提取核心字段，如果不存在留空
-                for key in item.keys():
-                    if key in ['spec', '规格', 'name']:
-                        spec = str(item.get(key, '')).strip()
-                    if key in ['originalPrice', '原价', 'price', '价格']:
-                        price_val = item.get(key, '0')
-                        if isinstance(price_val, str):
-                            price_str = ''.join(c for c in price_val if c.isdigit() or c == '.')
-                            original_price = float(price_str) if price_str else 0
-                        else:
-                            original_price = float(price_val) if price_val else 0
-                    if key in ['ruleName', '类型', 'rule', '分类']:
-                        rule_name = str(item.get(key, '')).strip()
+                response = requests.post(GLM_API_URL, headers=headers, json=payload, timeout=300)
 
-                # 保留所有原始字段，添加id等固定字段
-                output_item = dict(item)
-                output_item['id'] = str(uuid.uuid4())[:8]
-                output_item['sheetName'] = 'Excel识别'
-                output_item['tableIndex'] = 0
-                # 确保核心字段存在
-                if 'spec' not in output_item and spec:
-                    output_item['spec'] = spec
-                if 'originalPrice' not in output_item:
-                    output_item['originalPrice'] = original_price
-                if 'ruleName' not in output_item and rule_name:
-                    output_item['ruleName'] = rule_name
-
-                # 检查必须的spec和price
-                spec_val = output_item.get('spec', '')
-                price_val = output_item.get('originalPrice', 0)
-                if not spec_val:
-                    continue
-                if isinstance(price_val, str):
-                    price_str = ''.join(c for c in str(price_val) if c.isdigit() or c == '.')
-                    output_item['originalPrice'] = float(price_str) if price_str else 0
-                if output_item['originalPrice'] <= 0:
+                # 处理限流 - 退避重试
+                if response.status_code == 429:
+                    wait_time = 2 ** retry  # 指数退避: 1s, 2s, 4s
+                    print(f"{sheet_name} 触发限流，等待 {wait_time} 秒后重试...")
+                    await asyncio.sleep(wait_time)
                     continue
 
-                output_items.append(output_item)
-            except Exception:
+                # 其他错误也可能重试
+                if response.status_code >= 500:
+                    wait_time = 2 ** retry
+                    print(f"{sheet_name} 服务错误 {response.status_code}，等待 {wait_time} 秒后重试...")
+                    await asyncio.sleep(wait_time)
+                    continue
+
+                # 成功收到响应
+                break
+
+            # 处理响应结果
+            if response.status_code == 429:
+                # 多次重试仍然限流
+                all_errors.append(f"{sheet_name}: 请求频率过高，重试后仍然失败")
                 continue
 
-        if not output_items:
+            if response.status_code != 200:
+                all_errors.append(f"{sheet_name}: HTTP {response.status_code}")
+                continue
+
+            try:
+                result = response.json()
+            except Exception as e:
+                all_errors.append(f"{sheet_name}: JSON解析失败: {str(e)}")
+                continue
+
+            # 提取回复内容
+            try:
+                content = result['choices'][0]['message']['content']
+            except Exception as e:
+                all_errors.append(f"{sheet_name}: 响应格式错误: {str(e)}")
+                continue
+
+            # 打印原始内容到控制台，方便调试
+            print("\n" + "="*60)
+            print(f"GLM返回 [{sheet_name}]:")
+            print(content)
+            print("="*60 + "\n")
+
+            # 提取并解析JSON
+            # 第一步：提取出JSON部分 - 找从第一个 { 到最后一个 }
+            start = content.find('{')
+            end = content.rfind('}') + 1
+            if start >= 0 and end > start:
+                json_candidate = content[start:end]
+            else:
+                all_errors.append(f"{sheet_name}: GLM未返回JSON格式内容")
+                continue
+
+            # 第二步：修复常见的JSON格式错误
+            fixed = json_candidate
+            # 1. 移除行尾注释（// ...）
+            fixed = re.sub(r'//.*$', '', fixed, flags=re.MULTILINE)
+            # 2. 移除多行注释（/* ... */）
+            fixed = re.sub(r'/\*.*?\*/', '', fixed, flags=re.DOTALL)
+            # 3. 修复 trailing commas: ", }" → " }" 和 ", ]" → " ]"
+            fixed = re.sub(r',\s*([\]}])', r'\1', fixed)
+            # 4. 修复多行情况下的 trailing commas
+            fixed = re.sub(r',\s*\n\s*([\]}])', r'\n\1', fixed)
+            # 5. 修复单引号改双引号
+            fixed = re.sub(r"'([^']*)':", r'"\1":', fixed)
+            # 6. 移除空行
+            fixed = re.sub(r'\n\s*\n', r'\n', fixed)
+            # 7. 如果有多个JSON对象，尝试合并items
+            if '}{' in fixed:
+                if 'items' in fixed:
+                    fixed = re.sub(r'\}\s*\{', ',', fixed)
+
+            # 压缩空格
+            compact = re.sub(r'\s+', ' ', fixed)
+
+            # 尝试解析
+            try:
+                data = json.loads(fixed)
+            except json.JSONDecodeError as e1:
+                try:
+                    data = json.loads(compact)
+                except json.JSONDecodeError as e2:
+                    all_errors.append(f"{sheet_name}: JSON解析失败: {str(e1)}")
+                    continue
+
+            items = data.get('items', [])
+            if not items:
+                all_errors.append(f"{sheet_name}: 未识别出任何商品数据")
+                continue
+
+            # 转换为统一格式，保留所有动态字段
+            sheet_output_items = []
+            for item in items:
+                try:
+                    # 提取必填的核心字段
+                    spec = ''
+                    original_price = 0
+                    rule_name = ''
+
+                    # 尝试从item中提取核心字段，如果不存在留空
+                    for key in item.keys():
+                        if key in ['spec', '规格', 'name']:
+                            spec = str(item.get(key, '')).strip()
+                        if key in ['originalPrice', '原价', 'price', '价格']:
+                            price_val = item.get(key, '0')
+                            if isinstance(price_val, str):
+                                price_str = ''.join(c for c in price_val if c.isdigit() or c == '.')
+                                original_price = float(price_str) if price_str else 0
+                            else:
+                                original_price = float(price_val) if price_val else 0
+                        if key in ['ruleName', '类型', 'rule', '分类']:
+                            rule_name = str(item.get(key, '')).strip()
+
+                    # 保留所有原始字段，添加id等固定字段
+                    output_item = dict(item)
+                    output_item['id'] = str(uuid.uuid4())[:8]
+                    output_item['sheetName'] = sheet_name
+                    output_item['tableIndex'] = 0
+                    # 确保核心字段存在
+                    if 'spec' not in output_item and spec:
+                        output_item['spec'] = spec
+                    if 'originalPrice' not in output_item:
+                        output_item['originalPrice'] = original_price
+                    if 'ruleName' not in output_item and rule_name:
+                        output_item['ruleName'] = rule_name
+
+                    # 检查必须的spec和price
+                    spec_val = output_item.get('spec', '')
+                    price_val = output_item.get('originalPrice', 0)
+                    if not spec_val:
+                        continue
+                    if isinstance(price_val, str):
+                        price_str = ''.join(c for c in str(price_val) if c.isdigit() or c == '.')
+                        output_item['originalPrice'] = float(price_str) if price_str else 0
+                    if output_item['originalPrice'] <= 0:
+                        continue
+
+                    sheet_output_items.append(output_item)
+                    all_output_items.append(output_item)
+                except Exception:
+                    continue
+
+            # 当前Sheet处理成功，直接为这个Sheet创建一个table
+            if len(sheet_output_items) > 0:
+                sheet_rules = list(set(item['ruleName'] for item in sheet_output_items if item['ruleName']))
+                if not sheet_rules:
+                    sheet_rules = ["价格"]
+                tables.append({
+                    'sheetName': sheet_name,
+                    'tableTitle': f'GLM AI识别 {sheet_name}',
+                    'date': None,
+                    'rules': sheet_rules,
+                    'items': sheet_output_items
+                })
+
+            # 处理完一张图片，稍微暂停一下避免触发限流
+            if len(encoded_images) > 1:
+                await asyncio.sleep(0.5)
+
+        # 所有图片处理完成，检查是否有任何结果
+        if len(tables) == 0 or len(all_output_items) == 0:
+            # 全部失败
             # 清理临时文件
             for img_path in temp_image_paths:
                 os.remove(img_path)
             os.remove(input_path)
+            error_msg = "; ".join(all_errors)
             return ParseResponse(
                 success=False,
-                message='解析后无有效数据，请检查图片内容',
+                message=f'全部处理失败。错误: {error_msg}',
                 data=None
             )
-
-        # 收集所有不重复的rules
-        rules = list(set(item['ruleName'] for item in output_items if item['ruleName']))
-        if not rules:
-            rules = ["价格"]
-
-        tables = [{
-            'sheetName': 'Excel识别',
-            'tableTitle': 'GLM AI识别价格表',
-            'date': None,
-            'rules': rules,
-            'items': output_items
-        }]
 
         # 清理临时文件
         for img_path in temp_image_paths:
             os.remove(img_path)
         os.remove(input_path)
 
+        # 构建返回信息
+        total = len(all_output_items)
+        sheet_names = [table['sheetName'] for table in tables]
+        msg = f'GLM识别成功，共 {len(tables)} 个表格，{total} 个价格项'
+        if all_errors:
+            msg += f' ({len(all_errors)} 页处理失败)'
+
         # 返回结果
         return ParseResponse(
             success=True,
-            message=f'GLM识别成功，共 {len(output_items)} 个价格项',
+            message=msg,
             data={
-                'sheets': ['Excel识别'],
+                'sheets': sheet_names,
                 'tables': tables,
-                'totalItems': len(output_items)
+                'totalItems': total
             }
         )
 

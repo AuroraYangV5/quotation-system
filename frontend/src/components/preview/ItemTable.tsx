@@ -4,7 +4,9 @@ import { TableToolbar } from "./TableToolbar";
 import { SheetTabs } from "./SheetTabs";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { HelpCircle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useState, useEffect } from "react";
 
 interface ItemTableProps {
   sheetNames: string[];
@@ -68,22 +70,17 @@ export function ItemTable({
 
   // 编辑状态
   const [editingTitle, setEditingTitle] = useState(false);
-  const [editingSheet, setEditingSheet] = useState(false);
   const [titleValue, setTitleValue] = useState(tableTitle || "");
-  const [sheetValue, setSheetValue] = useState(currentSheetName);
+
+  // 当切换 sheet 时，更新当前 sheet 的标题
+  useEffect(() => {
+    setTitleValue(tableTitle || "");
+    setEditingTitle(false);
+  }, [currentSheetName, tableTitle]);
 
   const handleTitleBlur = () => {
     onUpdateTableTitle(currentSheetName, titleValue);
     setEditingTitle(false);
-  };
-
-  const handleSheetBlur = () => {
-    if (sheetValue.trim()) {
-      onUpdateSheetName(currentSheetName, sheetValue.trim());
-    } else {
-      setSheetValue(currentSheetName);
-    }
-    setEditingSheet(false);
   };
 
   const handleTitleKeyDown = (e: React.KeyboardEvent) => {
@@ -96,37 +93,49 @@ export function ItemTable({
     }
   };
 
-  const handleSheetKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSheetBlur();
-    }
-    if (e.key === 'Escape') {
-      setSheetValue(currentSheetName);
-      setEditingSheet(false);
-    }
-  };
-
   return (
     <Card>
       <CardHeader>
+        {/* Sheet 标签切换 */}
+        {sheetNames.length > 1 && (
+          <div className="mb-3">
+            <SheetTabs
+              sheetNames={sheetNames}
+              selectedSheet={selectedSheet}
+              onSelect={onSheetSelect}
+              onUpdateSheetName={onUpdateSheetName}
+            />
+          </div>
+        )}
+
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">Sheet：</span>
-            {editingSheet ? (
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-gray-500">标题：</span>
+              <Tooltip>
+                <TooltipTrigger>
+                  <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>点击可编辑</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            {editingTitle ? (
               <Input
-                value={sheetValue}
-                onChange={(e) => setSheetValue(e.target.value)}
-                onBlur={handleSheetBlur}
-                onKeyDown={handleSheetKeyDown}
+                value={titleValue}
+                onChange={(e) => setTitleValue(e.target.value)}
+                onBlur={handleTitleBlur}
+                onKeyDown={handleTitleKeyDown}
                 autoFocus
-                className="w-32 h-7 text-sm"
+                className="w-64 h-7 text-sm"
               />
             ) : (
               <span
-                className="text-sm font-medium cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
-                onClick={() => setEditingSheet(true)}
+                className="text-sm cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+                onClick={() => setEditingTitle(true)}
               >
-                {sheetValue}
+                {tableTitle || "点击设置标题"}
               </span>
             )}
           </div>
@@ -136,27 +145,6 @@ export function ItemTable({
               {hasExportSelection && `, 已选导出 ${exportSelectedCount} 项`}
             </span>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2 mt-1">
-          <span className="text-sm text-gray-500">标题：</span>
-          {editingTitle ? (
-            <Input
-              value={titleValue}
-              onChange={(e) => setTitleValue(e.target.value)}
-              onBlur={handleTitleBlur}
-              onKeyDown={handleTitleKeyDown}
-              autoFocus
-              className="w-64 h-7 text-sm"
-            />
-          ) : (
-            <span
-              className="text-sm cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
-              onClick={() => setEditingTitle(true)}
-            >
-              {tableTitle || "点击设置标题"}
-            </span>
-          )}
         </div>
       </CardHeader>
       <CardContent>
