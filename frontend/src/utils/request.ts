@@ -1,5 +1,7 @@
 // 基于fetch封装的request工具，统一错误处理
 
+import { toast } from '@/components/ui/use-toast';
+
 export interface RequestOptions extends RequestInit {
   body?: any;
 }
@@ -18,9 +20,12 @@ class RequestError extends Error {
 
 // 显示错误通知
 function showError(message: string) {
-  // 使用alert简单实现，后续可替换为toast组件
   console.error('Request Error:', message);
-  alert(`错误: ${message}`);
+  toast({
+    variant: "destructive",
+    title: "错误",
+    description: message,
+  });
 }
 
 async function request<T = any>(

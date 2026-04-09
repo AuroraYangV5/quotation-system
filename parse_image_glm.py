@@ -116,7 +116,7 @@ def parse_image(image_path: str) -> Dict:
         if json_candidate is None:
             return {
                 'success': False,
-                'message': 'GLM未返回JSON格式内容',
+                'message': '格式不对，请减少文件大小后重试',
                 'data': None
             }
 
@@ -147,7 +147,7 @@ def parse_image(image_path: str) -> Dict:
             except json.JSONDecodeError as e2:
                 return {
                     'success': False,
-                    'message': f'JSON解析失败。原始错误: {str(e1)}',
+                    'message': '格式不对，请减少文件大小后重试',
                     'data': None
                 }
 

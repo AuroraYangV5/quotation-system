@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/components/ui/use-toast";
 import { parseFile, parseFileByGLM, recognizeImage } from "@/api";
 import { ImageUploadArea } from "@/components/upload/ImageUploadArea";
 import CustomExtractionFields from "@/components/upload/CustomExtractionFields";
@@ -31,6 +32,7 @@ type UploadMode = "excel" | "image";
 
 export default function UploadPage() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [uploadMode, setUploadMode] = useState<UploadMode>("excel");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -139,10 +141,18 @@ export default function UploadPage() {
         const allIndices = new Set(imagesWithIndex.map((img) => img.index));
         setSelectedSheets(allIndices);
       } else {
-        alert(`转换失败: ${result.message}`);
+        toast({
+          variant: "destructive",
+          title: "转换失败",
+          description: result.message,
+        });
       }
     } catch (e) {
-      alert(`转换出错: ${e}`);
+      toast({
+        variant: "destructive",
+        title: "转换出错",
+        description: String(e),
+      });
     } finally {
       setPreviewLoading(false);
     }
@@ -170,7 +180,11 @@ export default function UploadPage() {
 
   const addField = () => {
     if (!newFieldName.trim()) {
-      alert("请输入字段名称");
+      toast({
+        variant: "destructive",
+        title: "提示",
+        description: "请输入字段名称",
+      });
       return;
     }
     // 根据名称自动生成key：转小写，空格转下划线，保留中文
@@ -234,7 +248,11 @@ export default function UploadPage() {
   function validateAndSetExcelFile(file: File) {
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (ext !== "xls" && ext !== "xlsx" && ext !== "pdf") {
-      alert("只支持 .xls .xlsx .pdf 格式");
+      toast({
+        variant: "destructive",
+        title: "提示",
+        description: "只支持 .xls .xlsx .pdf 格式",
+      });
       return;
     }
     setSelectedFile(file);
@@ -265,7 +283,11 @@ export default function UploadPage() {
 
   function validateAndSetImageFile(file: File) {
     if (!file.type.startsWith("image/")) {
-      alert("只支持图片文件");
+      toast({
+        variant: "destructive",
+        title: "提示",
+        description: "只支持图片文件",
+      });
       return;
     }
     setSelectedFile(file);
@@ -277,7 +299,11 @@ export default function UploadPage() {
 
   function handleSubmit() {
     if (!selectedFile) {
-      alert("请先选择文件");
+      toast({
+        variant: "destructive",
+        title: "提示",
+        description: "请先选择文件",
+      });
       return;
     }
     if (uploadMode === "excel" && useGLM && !previewImages) {
@@ -287,7 +313,11 @@ export default function UploadPage() {
     }
     if (uploadMode === "excel" && useGLM && previewImages) {
       if (selectedSheets.size === 0) {
-        alert("请至少勾选一个Sheet进行解析");
+        toast({
+          variant: "destructive",
+          title: "提示",
+          description: "请至少勾选一个Sheet进行解析",
+        });
         return;
       }
       // 弹出确认对话框，让用户确认自定义提取字段

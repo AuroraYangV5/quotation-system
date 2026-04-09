@@ -49,19 +49,19 @@ export function usePreviewPage() {
   // Derived state
   const currentTable = useMemo(
     () => getCurrentTable(tables, selectedSheet),
-    [tables, selectedSheet]
+    [tables, selectedSheet],
   );
 
   const filteredCurrentItems = useMemo(
     () => filterTableItems(currentTable?.items || [], searchKeyword),
-    [currentTable, searchKeyword]
+    [currentTable, searchKeyword],
   );
 
   const allItems = useMemo(() => getAllItems(tables), [tables]);
   const exportSelectedItems = useMemo(() => getItemsToExport(tables), [tables]);
   const { batchSelectedCount, exportSelectedCount } = useMemo(
     () => countSelectedItems(currentTable),
-    [currentTable]
+    [currentTable],
   );
 
   const hasBatchSelection = batchSelectedCount > 0;
@@ -79,9 +79,9 @@ export function usePreviewPage() {
     onSuccess: (blob) => {
       // 创建下载链接并触发下载
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = '报价表.xlsx';
+      a.download = "报价表.xlsx";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -96,13 +96,23 @@ export function usePreviewPage() {
 
   const toggleBatchSelection = (itemId: string) => {
     if (!currentTable) return;
-    const updatedTables = toggleItemSelectionInTables(tables, currentTable.sheetName, itemId, "selectedForBatch");
+    const updatedTables = toggleItemSelectionInTables(
+      tables,
+      currentTable.sheetName,
+      itemId,
+      "selectedForBatch",
+    );
     setTables(updatedTables);
   };
 
   const toggleExportSelection = (itemId: string) => {
     if (!currentTable) return;
-    const updatedTables = toggleItemSelectionInTables(tables, currentTable.sheetName, itemId, "selectedForExport");
+    const updatedTables = toggleItemSelectionInTables(
+      tables,
+      currentTable.sheetName,
+      itemId,
+      "selectedForExport",
+    );
     setTables(updatedTables);
   };
 
@@ -111,7 +121,7 @@ export function usePreviewPage() {
     const updatedTables = tables.map((table) =>
       table.sheetName === currentTable.sheetName
         ? toggleSelectAllForTable(table, "selectedForBatch", true)
-        : table
+        : table,
     );
     setTables(updatedTables);
   };
@@ -121,14 +131,19 @@ export function usePreviewPage() {
     const updatedTables = tables.map((table) =>
       table.sheetName === currentTable.sheetName
         ? toggleSelectAllForTable(table, "selectedForExport", true)
-        : table
+        : table,
     );
     setTables(updatedTables);
   };
 
   const handleItemProfitChange = (itemId: string, profit: number) => {
     if (!currentTable) return;
-    const updatedTables = updateItemProfitInTables(tables, currentTable.sheetName, itemId, profit);
+    const updatedTables = updateItemProfitInTables(
+      tables,
+      currentTable.sheetName,
+      itemId,
+      profit,
+    );
     setTables(updatedTables);
   };
 
@@ -145,20 +160,20 @@ export function usePreviewPage() {
 
   // 更新表格标题
   const updateTableTitle = (sheetName: string, newTitle: string) => {
-    const updatedTables = tables.map(table =>
+    const updatedTables = tables.map((table) =>
       table.sheetName === sheetName
         ? { ...table, tableTitle: newTitle }
-        : table
+        : table,
     );
     setTables(updatedTables);
   };
 
   // 更新工作表名称
   const updateSheetName = (oldSheetName: string, newSheetName: string) => {
-    const updatedTables = tables.map(table =>
+    const updatedTables = tables.map((table) =>
       table.sheetName === oldSheetName
         ? { ...table, sheetName: newSheetName }
-        : table
+        : table,
     );
     setTables(updatedTables);
     // 如果当前选中的就是被修改的sheet，更新选中状态

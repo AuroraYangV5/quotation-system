@@ -714,7 +714,7 @@ async def parse_excel_by_glm(
                 try:
                     data = json.loads(compact)
                 except json.JSONDecodeError as e2:
-                    all_errors.append(f"{sheet_name}: JSON解析失败: {str(e1)}")
+                    all_errors.append(f"{sheet_name}: 格式不对，请减少文件大小后重试")
                     continue
 
             items = data.get('items', [])
