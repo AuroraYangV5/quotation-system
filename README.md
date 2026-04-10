@@ -92,3 +92,137 @@ python3 parse_excel.py -h
 
 - `新报价表_利润率20%.xlsx` - 复杂表处理结果（20%利润率）
 - `简单表_利润率15%.xlsx` - 简单表处理结果（15%利润率）
+
+# 云服务器持久化部署方案
+
+## **CentOS 上配置环境**
+
+### 第一步：安装python环境
+
+```shell
+# 安装命令
+sudo yum install python3
+
+# 查看安装是否成功
+python3 --version
+```
+
+### 第二步：安装pip
+
+```shell
+# 安装命令
+sudo yum install python3-pip
+
+# 查看是否安装成功
+python3 -m pip --version
+```
+
+### 第三步：安装项目需要的环境
+
+- git clone 项目代码
+- cd 到项目目录下
+- 执行以下命令
+
+```Shell
+pip3 install -r requirements.txt
+```
+
+### 第四步：编辑环境变量
+
+```shell
+# 打开编辑
+vi ~/.bashrc
+
+# 使其生效
+source ~/.bashrc
+```
+
+<br />
+
+## **CentOS 上用 systemd 守护 FastAPI 服务**
+
+### **第一步：确认关键路径**
+
+SSH 登录服务器后，先执行以下命令确认路径：
+
+```shell
+# 确认 python3 路径
+which python3
+
+# 确认项目路径
+ls /path/to/your/project/main.py
+```
+
+### **第二步：创建 service 文件**
+
+```shell
+sudo vi /etc/systemd/system/quotation-backend.service
+```
+
+写入以下内容：
+
+```txt
+[Unit]
+Description=Quotation System Backend
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root/quotation-system
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+⚠️ 需要修改的地方：
+
+- `WorkingDirectory`：改为你的项目实际路径
+- `ExecStart` 中的 `/usr/bin/python3`：替换为 `which python3` 的输出结果
+
+### **第三步：启动服务**
+
+```shell
+# 重新加载配置
+sudo systemctl daemon-reload
+
+# 启动服务
+sudo systemctl start quotation-backend
+
+# 设置开机自启
+sudo systemctl enable quotation-backend
+
+# 查看运行状态（看到 Active: active (running) 即成功）
+sudo systemctl status quotation-backend
+```
+
+### **第四步：开放防火墙端口**
+
+CentOS 默认使用 `firewalld`，需要额外放行端口：
+
+```shell
+# 放行 8000 端口
+sudo firewall-cmd --permanent --add-port=8000/tcp
+sudo firewall-cmd --reload
+
+# 验证是否生效
+sudo firewall-cmd --list-ports
+```
+
+### **常用管理命令**
+
+```shell
+# 查看实时日志
+sudo journalctl -u quotation-backend -f
+
+# 重启服务（更新代码后执行）
+sudo systemctl restart quotation-backend
+
+# 停止服务
+sudo systemctl stop quotation-backend
+```
+
