@@ -24,6 +24,10 @@ interface ItemTableProps {
   onToggleSelectAllBatch: () => void;
   onToggleSelectAllExport: () => void;
   onProfitChange: (id: string, profit: number) => void;
+  onCalculatedPriceChange: (id: string, price: number) => void;
+  onFieldChange: (id: string, field: string, value: string | number) => void;
+  onDeleteRow: (id: string) => void;
+  onAddRow: (index: number) => void;
   onToggleBatch: (id: string) => void;
   onToggleExport: (id: string) => void;
   onUpdateTableTitle: (sheetName: string, newTitle: string) => void;
@@ -49,6 +53,10 @@ export function ItemTable({
   onToggleSelectAllBatch,
   onToggleSelectAllExport,
   onProfitChange,
+  onCalculatedPriceChange,
+  onFieldChange,
+  onDeleteRow,
+  onAddRow,
   onToggleBatch,
   onToggleExport,
   onUpdateTableTitle,
@@ -172,6 +180,7 @@ export function ItemTable({
                 <th className="p-2 text-right border border-gray-200 text-sm">原价</th>
                 <th className="p-2 text-center border border-gray-200 text-sm w-24">利润率 (%)</th>
                 <th className="p-2 text-right border border-gray-200 text-sm">计算后价格</th>
+                <th className="p-2 text-center border border-gray-200 text-sm w-20">操作</th>
                 <th className="p-2 text-center border border-gray-200 text-sm w-26">选择设置利润</th>
                 <th className="p-2 text-center border border-gray-200 text-sm w-26">选择导出</th>
               </tr>
@@ -184,6 +193,10 @@ export function ItemTable({
                   index={idx}
                   customFields={customFields}
                   onProfitChange={onProfitChange}
+                  onCalculatedPriceChange={onCalculatedPriceChange}
+                  onFieldChange={onFieldChange}
+                  onDeleteRow={onDeleteRow}
+                  onAddRow={onAddRow}
                   onToggleBatch={onToggleBatch}
                   onToggleExport={onToggleExport}
                 />

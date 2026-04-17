@@ -11,6 +11,10 @@ import {
   setGlobalProfitAll as setGlobalProfitAllUtil,
   toggleItemSelectionInTables,
   updateItemProfitInTables,
+  updateItemCalculatedPriceInTables,
+  updateItemFieldInTables,
+  deleteItemInTables,
+  insertItemInTables,
   convertToGenerateRequest,
   getItemsToExport,
   countSelectedItems,
@@ -147,6 +151,63 @@ export function usePreviewPage() {
     setTables(updatedTables);
   };
 
+  const handleItemCalculatedPriceChange = (itemId: string, price: number) => {
+    if (!currentTable) return;
+    const updatedTables = updateItemCalculatedPriceInTables(
+      tables,
+      currentTable.sheetName,
+      itemId,
+      price,
+    );
+    setTables(updatedTables);
+  };
+
+  const handleItemFieldChange = (itemId: string, field: string, value: string | number) => {
+    if (!currentTable) return;
+    const updatedTables = updateItemFieldInTables(
+      tables,
+      currentTable.sheetName,
+      itemId,
+      field,
+      value,
+    );
+    setTables(updatedTables);
+  };
+
+  const handleDeleteRow = (itemId: string) => {
+    if (!currentTable) return;
+    const updatedTables = deleteItemInTables(
+      tables,
+      currentTable.sheetName,
+      itemId,
+    );
+    setTables(updatedTables);
+  };
+
+  const handleAddRow = (index: number) => {
+    if (!currentTable) return;
+    // 创建新的空白行，使用原价的利润率作为默认值
+    const newItem: PriceItem = {
+      id: `new-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      sheetName: currentTable.sheetName,
+      tableIndex: currentTable.items.length,
+      spec: "",
+      ruleName: "",
+      originalPrice: 0,
+      profitPercent: globalProfit,
+      calculatedPrice: 0,
+      selectedForBatch: false,
+      selectedForExport: false,
+    };
+    const updatedTables = insertItemInTables(
+      tables,
+      currentTable.sheetName,
+      index + 1,
+      newItem,
+    );
+    setTables(updatedTables);
+  };
+
   const batchUpdateProfit = (profit: number) => {
     const updatedTables = batchUpdateProfitUtil(tables, profit);
     setTables(updatedTables);
@@ -219,6 +280,10 @@ export function usePreviewPage() {
     toggleSelectAllBatchCurrentTable,
     toggleSelectAllExportCurrentTable,
     handleItemProfitChange,
+    handleItemCalculatedPriceChange,
+    handleItemFieldChange,
+    handleDeleteRow,
+    handleAddRow,
     updateTableTitle,
     updateSheetName,
     batchUpdateProfit: () => {

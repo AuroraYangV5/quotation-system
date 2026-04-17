@@ -1,4 +1,5 @@
 import { usePreviewPage } from "@/hooks/usePreviewPage";
+import type { PriceItem } from "@/types";
 import { PreviewHeader } from "@/components/preview/PreviewHeader";
 import { GlobalProfitCard } from "@/components/preview/GlobalProfitCard";
 import { BatchProfitCard } from "@/components/preview/BatchProfitCard";
@@ -33,6 +34,10 @@ export default function PreviewPage() {
     toggleSelectAllBatchCurrentTable,
     toggleSelectAllExportCurrentTable,
     handleItemProfitChange,
+    handleItemCalculatedPriceChange,
+    handleItemFieldChange,
+    handleDeleteRow,
+    handleAddRow,
     updateTableTitle,
     updateSheetName,
     batchUpdateProfit,
@@ -82,6 +87,10 @@ export default function PreviewPage() {
             onToggleSelectAllBatch={toggleSelectAllBatchCurrentTable}
             onToggleSelectAllExport={toggleSelectAllExportCurrentTable}
             onProfitChange={handleItemProfitChange}
+            onCalculatedPriceChange={handleItemCalculatedPriceChange}
+            onFieldChange={handleItemFieldChange}
+            onDeleteRow={handleDeleteRow}
+            onAddRow={handleAddRow}
             onToggleBatch={toggleBatchSelection}
             onToggleExport={toggleExportSelection}
             onUpdateTableTitle={updateTableTitle}

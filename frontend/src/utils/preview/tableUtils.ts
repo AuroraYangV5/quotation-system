@@ -43,6 +43,70 @@ export function updateItemProfitInTables(
 }
 
 /**
+ * 更新表格中单个项目计算后价格（操作整个 tables 数组）
+ */
+export function updateItemCalculatedPriceInTables(
+  tables: TableData[],
+  sheetName: string,
+  itemId: string,
+  calculatedPrice: number,
+): TableData[] {
+  return tables.map((table) =>
+    table.sheetName === sheetName
+      ? updateItemCalculatedPrice(table, itemId, calculatedPrice)
+      : table,
+  );
+}
+
+/**
+ * 更新表格中单个项目字段（操作整个 tables 数组）
+ */
+export function updateItemFieldInTables(
+  tables: TableData[],
+  sheetName: string,
+  itemId: string,
+  field: string,
+  value: string | number,
+): TableData[] {
+  return tables.map((table) =>
+    table.sheetName === sheetName
+      ? updateItemField(table, itemId, field, value)
+      : table,
+  );
+}
+
+/**
+ * 删除表格中单个项目（操作整个 tables 数组）
+ */
+export function deleteItemInTables(
+  tables: TableData[],
+  sheetName: string,
+  itemId: string,
+): TableData[] {
+  return tables.map((table) =>
+    table.sheetName === sheetName
+      ? deleteItem(table, itemId)
+      : table,
+  );
+}
+
+/**
+ * 在表格中插入新项目（操作整个 tables 数组）
+ */
+export function insertItemInTables(
+  tables: TableData[],
+  sheetName: string,
+  index: number,
+  newItem: PriceItem,
+): TableData[] {
+  return tables.map((table) =>
+    table.sheetName === sheetName
+      ? insertItem(table, index, newItem)
+      : table,
+  );
+}
+
+/**
  * 将 tables 转换为生成报价请求的格式
  */
 export function convertToGenerateRequest(tables: TableData[]): GenerateRequest {
@@ -140,6 +204,78 @@ export function updateItemProfit(
           }
         : item,
     ),
+  };
+}
+
+/**
+ * 更新单个项目计算后价格，同时反推利润率
+ */
+export function updateItemCalculatedPrice(
+  table: TableData,
+  itemId: string,
+  calculatedPrice: number,
+): TableData {
+  return {
+    ...table,
+    items: table.items.map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            calculatedPrice,
+            profitPercent: item.originalPrice > 0
+              ? ((calculatedPrice - item.originalPrice) / item.originalPrice) * 100
+              : 0,
+          }
+        : item,
+    ),
+  };
+}
+
+/**
+ * 更新单个项目字段
+ */
+export function updateItemField(
+  table: TableData,
+  itemId: string,
+  field: string,
+  value: string | number,
+): TableData {
+  return {
+    ...table,
+    items: table.items.map((item) =>
+      item.id === itemId
+        ? { ...item, [field]: value }
+        : item,
+    ),
+  };
+}
+
+/**
+ * 删除单个项目
+ */
+export function deleteItem(
+  table: TableData,
+  itemId: string,
+): TableData {
+  return {
+    ...table,
+    items: table.items.filter((item) => item.id !== itemId),
+  };
+}
+
+/**
+ * 在指定位置插入新项目
+ */
+export function insertItem(
+  table: TableData,
+  index: number,
+  newItem: PriceItem,
+): TableData {
+  const items = [...table.items];
+  items.splice(index, 0, newItem);
+  return {
+    ...table,
+    items,
   };
 }
 
