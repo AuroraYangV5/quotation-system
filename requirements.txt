@@ -7,3 +7,7 @@ uvicorn
 requests
 pdf2image
 Pillow
+pytesseract
+opencv-python
+sentry-sdk
+python-dotenv

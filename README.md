@@ -14,12 +14,6 @@
 ## 安装依赖
 
 ```bash
-pip3 install xlrd openpyxl
-```
-
-或者
-
-```bash
 pip3 install -r requirements.txt
 ```
 

@@ -6,6 +6,8 @@ FastAPI应用入口
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import json
 import urllib
 import base64
@@ -21,6 +23,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
+
+# Sentry 日志收集 - 获取 DSN: https://sentry.io
+import sentry_sdk
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN", ""),
+    traces_sample_rate=0.1,
+    environment=os.getenv("ENV", "production")
+)
 
 app = FastAPI(title="报价自动生成系统")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
