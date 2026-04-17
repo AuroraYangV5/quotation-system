@@ -2,6 +2,8 @@
 
 import { toast } from '@/components/ui/use-toast';
 
+const API_BASE = import.meta.env.VITE_API_TARGET || '';
+
 export interface RequestOptions extends RequestInit {
   body?: any;
 }
@@ -34,6 +36,9 @@ async function request<T = any>(
 ): Promise<T> {
   const { body, ...init } = options;
 
+  // 如果 URL 以 /api 开头且配置了 API_BASE，则加上前缀
+  const fullUrl = url.startsWith('/api') && API_BASE ? API_BASE + url : url;
+
   const config: RequestInit = {
     ...init,
     headers: {
@@ -53,7 +58,7 @@ async function request<T = any>(
   }
 
   try {
-    const response = await fetch(url, config);
+    const response = await fetch(fullUrl, config);
 
     if (!response.ok) {
       let errorMessage = `请求失败: ${response.status} ${response.statusText}`;
