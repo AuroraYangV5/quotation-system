@@ -1,5 +1,5 @@
 {
   "functions": [
-    { "path": "/api/proxy/*", "entrypoint": "edge-functions/proxy.js" }
+    { "path": "/api/*", "entrypoint": "functions/api/[[path]].js" }
   ]
 }
