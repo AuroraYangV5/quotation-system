@@ -1,0 +1,5 @@
+{
+  "functions": [
+    { "path": "/api/proxy/*", "entrypoint": "edge-functions/proxy.js" }
+  ]
+}
