@@ -108,11 +108,10 @@ export default function UploadPage() {
     onSuccess: handleParseSuccess,
   });
 
-  const apiBase = import.meta.env.VITE_API_TARGET || '';
   const convertPreviewMutation = async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-    const response = await fetch(`${apiBase}/api/parse-by-glm-preview`, {
+    const response = await fetch(`/api/parse-by-glm-preview`, {
       method: "POST",
       body: formData,
     });

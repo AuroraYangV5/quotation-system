@@ -42,8 +42,7 @@ export function recognizeImage(file: File): Promise<ParseResponse> {
 
 // 生成报价文件
 export function generateQuotation(data: GenerateRequest): Promise<Blob> {
-  const apiBase = import.meta.env.VITE_API_TARGET || '';
-  return fetch(`${apiBase}/api/generate`, {
+  return fetch(`/api/generate`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

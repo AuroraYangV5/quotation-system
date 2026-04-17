@@ -2,7 +2,7 @@
 
 import { toast } from '@/components/ui/use-toast';
 
-const API_BASE = import.meta.env.VITE_API_TARGET || '';
+// const API_BASE = import.meta.env.VITE_API_TARGET || '';
 
 export interface RequestOptions extends RequestInit {
   body?: any;
@@ -37,7 +37,8 @@ async function request<T = any>(
   const { body, ...init } = options;
 
   // 如果 URL 以 /api 开头且配置了 API_BASE，则加上前缀
-  const fullUrl = url.startsWith('/api') && API_BASE ? API_BASE + url : url;
+  // const fullUrl = url.startsWith('/api') && API_BASE ? API_BASE + url : url;
+  const fullUrl = url;
 
   const config: RequestInit = {
     ...init,
