@@ -8,3 +8,8 @@ coverage/
 !.env.example
 .mock
 __pycache__
+# Tencent Cloud EdgeOne
+.env
+.edgeone/*
+.tef_dist/*
+  
