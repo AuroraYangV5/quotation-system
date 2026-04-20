@@ -35,6 +35,14 @@ sentry_sdk.init(
 app = FastAPI(title="报价自动生成系统")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+# 添加中间件：允许混合内容（HTTP后端 + HTTPS前端场景）
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = "upgrade-insecure-requests"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
 # 创建临时目录存储上传文件和生成文件
 TEMP_DIR = tempfile.gettempdir()
 os.makedirs(TEMP_DIR, exist_ok=True)
