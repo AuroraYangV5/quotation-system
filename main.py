@@ -318,7 +318,7 @@ async def parse_excel(file: UploadFile = File(...)):
 async def ocr_parse(file: UploadFile = File(...)):
     """
     图片OCR识别，从图片中提取规格和价格
-    使用GLM-4V-Flash视觉API识别，返回格式与 /api/parse 完全相同
+    使用GLM大模型视觉API识别，返回格式与 /api/parse 完全相同
     """
     try:
         # 保存临时文件
@@ -328,7 +328,7 @@ async def ocr_parse(file: UploadFile = File(...)):
         with open(temp_path, "wb") as buffer:
             buffer.write(await file.read())
 
-        # 调用GLM-4V-Flash解析
+        # 调用GLM大模型解析
         from parse_image_glm import parse_image
         result = parse_image(temp_path)
 
@@ -434,7 +434,7 @@ async def parse_excel_by_glm(
     fields: str = Query(None, description="自定义提取字段，JSON格式")
 ):
     """
-    使用GLM-4V-Flash解析Excel文件
+    使用GLM大模型解析Excel文件
     流程：Excel -> 转换为图片（每个Sheet一张）-> 一次性把所有图片传给GLM -> 返回完整JSON
     保留原有 /api/parse 作为备用方案
     支持selected_sheets参数，只解析选中的Sheet索引

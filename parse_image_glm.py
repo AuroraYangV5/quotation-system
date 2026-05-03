@@ -1,6 +1,6 @@
 """
-GLM-4V-Flash 图片OCR识别模块
-调用智谱AI GLM-4V-Flash API识别图片中的表格数据
+GLM 大模型 图片OCR识别模块
+调用智谱AI GLM 大模型 API识别图片中的表格数据
 """
 import os
 import base64
@@ -21,7 +21,7 @@ def encode_image(image_path: str) -> str:
 
 def parse_image(image_path: str) -> Dict:
     """
-    使用GLM-4V-Flash识别图片中的价格表格
+    使用GLM大模型识别图片中的价格表格
     返回格式与Excel解析相同
     """
     api_key = os.getenv("ZHIPU_API_KEY")

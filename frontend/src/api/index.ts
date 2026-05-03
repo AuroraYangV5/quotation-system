@@ -13,7 +13,7 @@ export function parseFile(file: File): Promise<ParseResponse> {
 
 import type { ConfigurableField } from '../pages/UploadPage';
 
-// 上传Excel并使用GLM-4V-Flash AI解析，可以指定选中的Sheet索引和自定义提取字段
+// 上传Excel并使用GLM大模型解析，可以指定选中的Sheet索引和自定义提取字段
 export function parseFileByGLM(
   file: File,
   selectedSheetIndices: number[],

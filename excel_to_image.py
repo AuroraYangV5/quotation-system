@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Excel转图片工具
-将Excel文件的每个Sheet转换为图片，供GLM-4V-Flash视觉识别
+将Excel文件的每个Sheet转换为图片，供GLM大模型视觉识别
 支持 .xls 和 .xlsx 格式
 """
 import os
