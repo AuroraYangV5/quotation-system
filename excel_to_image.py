@@ -87,6 +87,8 @@ class ExcelToImageConverter:
                 font_paths = [
                     ("/System/Library/Fonts/PingFang.ttc", "PingFang"),
                     ("/System/Library/Fonts/STHeiti Light.ttc", "STHeiti"),
+                    ("/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", "NotoCJK"),
+                    ("/usr/share/fonts/google-noto-cjk/NotoSansCJK-Bold.ttc", "NotoCJK"),
                     ("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", "WenQuanYi"),
                     ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "Noto"),
                     ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "DejaVu"),
