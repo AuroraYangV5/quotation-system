@@ -10,7 +10,15 @@ import { parseFile, parseFileByGLM, recognizeImage } from "@/api";
 import CustomExtractionFields from "@/components/upload/CustomExtractionFields";
 import FieldConfirmDialog from "@/components/upload/FieldConfirmDialog";
 import type { TableData, PriceItem, ParseResponse } from "@/types";
-import { initFileCache, saveFileRecord, getAllFileRecords, updateFileRecord, type CachedFileRecord } from "@/utils/fileCache";
+import {
+  initFileCache,
+  saveFileRecord,
+  getAllFileRecords,
+  updateFileRecord,
+  getFileRecord,
+  deleteFileRecord,
+  type CachedFileRecord,
+} from "@/utils/fileCache";
 
 // 预览图片接口类型
 export interface PreviewImage {
@@ -260,7 +268,9 @@ export default function UploadPage() {
             index: idx,
           }),
         );
-        const allIndices = new Set<number>(imagesWithIndex.map((img: PreviewImage) => img.index));
+        const allIndices = new Set<number>(
+          imagesWithIndex.map((img: PreviewImage) => img.index),
+        );
         setSelectedFiles((prev) => {
           const updated = new Map(prev);
           updated.set(fileId, {
@@ -272,8 +282,8 @@ export default function UploadPage() {
           return updated;
         });
         // 更新 IndexedDB 缓存中的预览图片
-        updateFileRecord(fileId, { previewImages: imagesWithIndex }).catch((e) =>
-          console.error("Failed to update preview images in cache:", e),
+        updateFileRecord(fileId, { previewImages: imagesWithIndex }).catch(
+          (e) => console.error("Failed to update preview images in cache:", e),
         );
       } else {
         toast({
@@ -596,31 +606,158 @@ export default function UploadPage() {
       ? parseMutation.isPending
       : recognizeMutation.isPending;
 
+  // 删除最近文件
+  function deleteRecent(recent: { id: string }) {
+    deleteFileRecord(recent.id)
+      .then(() => {
+        setRecentFiles((prev) => prev.filter((f) => f.id !== recent.id));
+      })
+      .catch((e) => console.error("Failed to delete recent file:", e));
+  }
+
   // 从最近文件恢复
   function restoreFromRecent(recent: {
     id: string;
     name: string;
     parseResult: ParseResponse;
   }) {
-    // 保存到sessionStorage，跳转到编辑页面
-    const data = recent.parseResult;
-    if (data.success && data.data) {
-      const tables: TableData[] = data.data.tables.map((table) => ({
-        ...table,
-        items: table.items.map((item: any) => {
-          // 优先使用缓存中保存的利润率，否则使用当前默认值
-          const savedProfit = item.profitPercent !== undefined ? item.profitPercent : defaultProfit;
-          return {
-            ...item,
-            profitPercent: savedProfit,
-            calculatedPrice: item.originalPrice * (1 + savedProfit / 100),
-            selectedForBatch: false,
-            selectedForExport: false,
-          };
-        }),
-      }));
-      sessionStorage.setItem("quotation-tables", JSON.stringify(tables));
-      navigate("/preview");
+    try {
+      // 保存到sessionStorage，跳转到编辑页面
+      const data = recent.parseResult;
+      if (data.success && data.data) {
+        const tables: TableData[] = data.data.tables.map((table) => ({
+          ...table,
+          items: table.items.map((item: any) => {
+            // 优先使用缓存中保存的利润率，否则使用当前默认值
+            const savedProfit =
+              item.profitPercent !== undefined
+                ? item.profitPercent
+                : defaultProfit;
+            return {
+              ...item,
+              profitPercent: savedProfit,
+              calculatedPrice: item.originalPrice * (1 + savedProfit / 100),
+              selectedForBatch: false,
+              selectedForExport: false,
+            };
+          }),
+        }));
+        sessionStorage.setItem("quotation-tables", JSON.stringify(tables));
+        navigate("/preview");
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "恢复失败",
+        description: "请重新解析",
+      });
+    }
+  }
+
+  // 重新解析最近文件
+  async function reParseRecent(recent: {
+    id: string;
+    name: string;
+    parseResult: ParseResponse;
+  }) {
+    try {
+      // 从缓存获取文件
+      const cached = await getFileRecord(recent.id);
+      if (!cached || !cached.fileBlob) {
+        toast({
+          variant: "destructive",
+          title: "缓存文件已失效",
+          description: "无法找到原始文件，请重新上传",
+        });
+        return;
+      }
+
+      // 从 blob 获取文件类型
+      const fileType = getFileType(cached.fileBlob as unknown as File);
+
+      // 创建新的文件记录
+      const newId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      const previewUrl =
+        fileType === "image"
+          ? URL.createObjectURL(cached.fileBlob as unknown as File)
+          : null;
+
+      // 添加到选中文件
+      const newFiles = new Map(selectedFiles);
+      newFiles.set(newId, {
+        id: newId,
+        file: cached.fileBlob as unknown as File,
+        fileType,
+        previewUrl,
+        previewImages: null,
+        selectedSheets: new Set(),
+        parseResult: null,
+        status: "pending",
+      });
+
+      setSelectedFiles(newFiles);
+      setActiveFileId(newId);
+
+      // 如果是图片类型，直接开始 OCR
+      if (fileType === "image") {
+        return;
+      }
+
+      // 如果需要 GLM 解析，先转换预览
+      if (useGLM) {
+        const record = newFiles.get(newId);
+        if (record) {
+          setSelectedFiles((prev) => {
+            const updated = new Map(prev);
+            updated.set(newId, { ...record, status: "pending" });
+            return updated;
+          });
+
+          const result = await convertPreviewMutation(record.file);
+          if (result.success && result.data) {
+            const imagesWithIndex = result.data.images.map(
+              (img: any, idx: number) => ({
+                ...img,
+                index: idx,
+              }),
+            );
+            const allIndices = new Set<number>(
+              imagesWithIndex.map((img: PreviewImage) => img.index),
+            );
+            setSelectedFiles((prev) => {
+              const updated = new Map(prev);
+              updated.set(newId, {
+                ...record,
+                status: "preview",
+                previewImages: imagesWithIndex,
+                selectedSheets: allIndices,
+              });
+              return updated;
+            });
+          } else {
+            toast({
+              variant: "destructive",
+              title: "转换失败",
+              description: result.message,
+            });
+            setSelectedFiles((prev) => {
+              const updated = new Map(prev);
+              updated.set(newId, {
+                ...record,
+                status: "error",
+                errorMessage: result.message,
+              });
+              return updated;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "操作失败",
+        description: String(e),
+      });
     }
   }
 
@@ -641,12 +778,12 @@ export default function UploadPage() {
       <div className="max-w-7xl mx-auto pb-8 px-4 pt-6">
         <div className="flex gap-6">
           {/* 左侧栏：上传区域 + 文件列表 */}
-          <div className="w-[288px] flex-shrink-0 space-y-4">
-            <Card className="w-[288px]">
+          <div className="w-[288px] flex-shrink-0 flex flex-col max-h-[calc(100vh-120px)]">
+            <Card className="w-[288px] flex-1 flex flex-col overflow-hidden">
               <CardHeader>
                 <CardTitle className="text-lg font-bold">选择资料</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 flex-1 overflow-y-auto">
                 {/* 统一上传区域 - 支持所有文件类型 */}
                 <div
                   onDragOver={handleDragOver}
@@ -763,7 +900,8 @@ export default function UploadPage() {
                                 e.stopPropagation();
                                 deleteFile(record.id);
                               }}
-                              className="text-gray-400 hover:text-red-500 transition-colors"
+                              className="cursor-pointer text-gray-400 hover:text-red-500 transition-colors"
+                              title="删除"
                             >
                               ×
                             </button>
@@ -775,17 +913,25 @@ export default function UploadPage() {
                 )}
 
                 {/* 最近上传 */}
-                {recentFiles.length > 0 && selectedFiles.size === 0 && (
+                {recentFiles.length > 0 && (
                   <div className="space-y-2">
-                    <h3 className="text-sm font-medium text-gray-700">
-                      最近上传
+                    <h3 className="text-sm font-medium text-gray-700 flex items-center justify-between">
+                      <span>最近上传</span>
+                      <span className="text-xs text-gray-400">({recentFiles.length})</span>
                     </h3>
-                    <div className="space-y-2">
-                      {recentFiles.slice(0, 4).map((recent) => (
+                    <div className="space-y-2 max-h-[420px] overflow-y-auto">
+                      {recentFiles.map((recent) => (
                         <div
                           key={recent.id}
-                          className="p-2 border border-gray-200 rounded-lg hover:border-primary/50 cursor-pointer transition-all"
-                          onClick={() => restoreFromRecent(recent)}
+                          className={`p-2 border rounded-lg transition-all ${
+                            activeFileId === recent.id
+                              ? "border-blue-500 bg-blue-50 ring-2 ring-blue-500/20"
+                              : "border-gray-200 hover:border-primary/50"
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            restoreFromRecent(recent);
+                          }}
                         >
                           <p
                             className="text-sm font-medium text-gray-700 truncate"
@@ -793,10 +939,47 @@ export default function UploadPage() {
                           >
                             {recent.name}
                           </p>
-                          <p className="text-xs text-gray-500">
-                            {recent.parseResult.data?.totalItems || 0}项 ·{" "}
-                            {new Date(recent.timestamp).toLocaleDateString()}
-                          </p>
+
+                          <div className="flex items-center justify-between gap-2 mt-2">
+                            <p className="text-xs text-gray-500">
+                              {recent.parseResult?.data?.totalItems || 0}项 ·{" "}
+                              {new Date(recent.timestamp).toLocaleDateString()}
+                            </p>
+                            <div className="flex items-center gap-1">
+                              <button
+                                className="cursor-pointer text-gray-400 hover:text-blue-500 transition-colors p-1 h-[24px]"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  reParseRecent(recent);
+                                }}
+                                title="重新解析"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth="2"
+                                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                className="cursor-pointer text-gray-400 hover:text-red-500 transition-colors p-1 h-[24px] flex items-center"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteRecent(recent);
+                                }}
+                                 title="删除"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1017,7 +1200,7 @@ export default function UploadPage() {
                       ) : activeFile?.fileType === "image" ? (
                         "开始识别"
                       ) : useGLM && !activeFile?.previewImages ? (
-                        "转换图片预览"
+                        "转换预览"
                       ) : useGLM ? (
                         "开始AI识别"
                       ) : (
@@ -1055,10 +1238,10 @@ export default function UploadPage() {
                 <ul className="list-disc list-inside space-y-1 text-xs text-gray-600">
                   {useGLM ? (
                     <>
-                      <li>上传Excel/PDF文件，使用GLM大模型视觉识别</li>
-                      <li>上传图片文件，OCR识别规格和原价</li>
-                      <li>选择要解析的Sheet，点击开始AI识别</li>
-                      <li>识别后可在预览页面修改利润率</li>
+                      <li>上传Excel/Pdf/图片文件，使用大模型视觉识别</li>
+                      <li>上传图片文件，点击“转换预览”按钮，转换文件内容</li>
+                      <li>选择要解析的内容，点击“开始AI识别”按钮</li>
+                      <li>识别后可在预览页面编辑内容和导出文件</li>
                     </>
                   ) : (
                     <>
