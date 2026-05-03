@@ -766,7 +766,7 @@ export default function UploadPage() {
       <div className="sticky top-0 z-50 bg-[#f5f7fa]/95 backdrop-blur-sm py-6 px-4">
         <div className="max-w-7xl mx-auto text-center">
           <h1 className="text-4xl font-bold text-gray-800 mb-2">
-            报价自动生成系统
+            欢迎使用智能报价系统
           </h1>
           <p className="text-gray-600">
             上传原价表，自定义利润率，一键生成新报价
