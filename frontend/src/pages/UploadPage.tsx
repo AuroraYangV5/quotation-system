@@ -210,11 +210,47 @@ export default function UploadPage() {
     }
   };
 
+  const updateFileError = (fileId: string, errorMessage: string) => {
+    setSelectedFiles((prev) => {
+      const updated = new Map(prev);
+      const record = updated.get(fileId);
+      if (record) {
+        updated.set(fileId, {
+          ...record,
+          status: "error",
+          errorMessage,
+        });
+      }
+      return updated;
+    });
+  };
+
   const parseMutation = useMutation({
     mutationFn: parseFile,
     onSuccess: (data) => {
+      if (data.success && data.data) {
+        if (activeFileId) {
+          handleParseSuccess(data, activeFileId, activeFile?.file.name || "");
+        }
+      } else {
+        toast({
+          variant: "destructive",
+          title: "解析失败",
+          description: data.message || "未能解析出任何数据",
+        });
+        if (activeFileId) {
+          updateFileError(activeFileId, data.message || "未能解析出任何数据");
+        }
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "解析出错",
+        description: error.message,
+        variant: "destructive",
+      });
       if (activeFileId) {
-        handleParseSuccess(data, activeFileId, activeFile?.file.name || "");
+        updateFileError(activeFileId, error.message);
       }
     },
   });
@@ -224,8 +260,29 @@ export default function UploadPage() {
       return parseFileByGLM(file, selected, fields);
     },
     onSuccess: (data) => {
+      if (data.success && data.data) {
+        if (activeFileId) {
+          handleParseSuccess(data, activeFileId, activeFile?.file.name || "");
+        }
+      } else {
+        toast({
+          variant: "destructive",
+          title: "GLM解析失败",
+          description: data.message || "GLM未能识别出任何数据",
+        });
+        if (activeFileId) {
+          updateFileError(activeFileId, data.message || "GLM未能识别出任何数据");
+        }
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "GLM解析出错",
+        description: error.message,
+        variant: "destructive",
+      });
       if (activeFileId) {
-        handleParseSuccess(data, activeFileId, activeFile?.file.name || "");
+        updateFileError(activeFileId, error.message);
       }
     },
   });
@@ -243,8 +300,29 @@ export default function UploadPage() {
   const recognizeMutation = useMutation({
     mutationFn: recognizeImage,
     onSuccess: (data) => {
+      if (data.success && data.data) {
+        if (activeFileId) {
+          handleParseSuccess(data, activeFileId, activeFile?.file.name || "");
+        }
+      } else {
+        toast({
+          variant: "destructive",
+          title: "图片识别失败",
+          description: data.message || "GLM未识别出任何商品数据，请检查图片清晰度",
+        });
+        if (activeFileId) {
+          updateFileError(activeFileId, data.message || "GLM未识别出任何商品数据，请检查图片清晰度");
+        }
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "图片识别失败",
+        description: error.message,
+        variant: "destructive",
+      });
       if (activeFileId) {
-        handleParseSuccess(data, activeFileId, activeFile?.file.name || "");
+        updateFileError(activeFileId, error.message);
       }
     },
   });
@@ -291,15 +369,7 @@ export default function UploadPage() {
           title: "转换失败",
           description: result.message,
         });
-        setSelectedFiles((prev) => {
-          const updated = new Map(prev);
-          updated.set(fileId, {
-            ...record,
-            status: "error",
-            errorMessage: result.message,
-          });
-          return updated;
-        });
+        updateFileError(fileId, result.message);
       }
     } catch (e) {
       toast({
@@ -307,15 +377,7 @@ export default function UploadPage() {
         title: "转换出错",
         description: String(e),
       });
-      setSelectedFiles((prev) => {
-        const updated = new Map(prev);
-        updated.set(fileId, {
-          ...record,
-          status: "error",
-          errorMessage: String(e),
-        });
-        return updated;
-      });
+      updateFileError(fileId, String(e));
     }
   };
 
@@ -600,11 +662,11 @@ export default function UploadPage() {
     setConfirmDialogOpen(false);
   }
 
-  const isPending = useGLM
-    ? parseByGlmMutation.isPending
-    : uploadMode === "excel"
-      ? parseMutation.isPending
-      : recognizeMutation.isPending;
+  const isPending = activeFile?.fileType === "image"
+    ? recognizeMutation.isPending
+    : useGLM
+      ? parseByGlmMutation.isPending
+      : parseMutation.isPending;
 
   // 删除最近文件
   function deleteRecent(recent: { id: string }) {

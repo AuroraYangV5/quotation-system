@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { generateQuotation } from "@/api";
 import type { TableData } from "@/types";
+import { toast } from "@/components/ui/use-toast";
 import {
   getCurrentTable,
   filterTableItems,
@@ -81,7 +82,6 @@ export function usePreviewPage() {
   const generateMutation = useMutation({
     mutationFn: () => generateQuotation(convertToGenerateRequest(tables)),
     onSuccess: (blob) => {
-      // 创建下载链接并触发下载
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -90,6 +90,13 @@ export function usePreviewPage() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "生成失败",
+        description: error.message || "生成报价表时出错，请重试",
+      });
     },
   });
 
