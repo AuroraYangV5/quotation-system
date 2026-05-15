@@ -8,7 +8,7 @@ export async function onRequest(context) {
     method: request.method,
     headers: request.headers,
     body: ["GET", "HEAD"].includes(request.method) ? undefined : request.body,
-    duplex: 'half',
+    // duplex: 'half',
   });
   try {
     const response = await fetch(proxyRequest);
